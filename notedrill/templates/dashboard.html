@@ -1,89 +1,44 @@
 {% extends "base.html" %}
-{% block title %}QuizNote — Dashboard{% endblock %}
+{% block title %}NoteDrill — Dashboard{% endblock %}
 {% block content %}
-<div class="app-layout">
+<div class="app">
     <aside class="sidebar" style="padding:1rem;">
         <a href="/" style="color:var(--accent);text-decoration:none;font-weight:700;">📁 笔记库</a>
         <a href="/dashboard" style="color:var(--text);text-decoration:none;display:block;margin-top:1rem;">📊 仪表盘</a>
-        <a href="/review" style="display:block;margin-top:0.5rem;color:var(--text-dim);text-decoration:none;">🔄 间隔复习</a>
-        <a href="/stats" style="display:block;margin-top:0.5rem;color:var(--text-dim);text-decoration:none;">📈 统计</a>
+        <a href="/review" style="display:block;margin-top:.5rem;color:var(--text-muted);text-decoration:none;">🔄 间隔复习</a>
     </aside>
     <main class="content">
-        <h1 style="margin-bottom:1.5rem;">📊 学习仪表盘</h1>
-
-        <!-- Stats row -->
+        <h1 style="margin-bottom:1.5rem;font-size:1.2rem;font-weight:700;">📊 学习仪表盘</h1>
         <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:2rem;">
-            <div class="stat-card"><div class="value">{{ stats.total_quizzes }}</div><div class="label">总测验</div></div>
-            <div class="stat-card"><div class="value">{{ stats.total_questions_answered }}</div><div class="label">总答题</div></div>
-            <div class="stat-card">
-                <div class="value" style="color:{% if stats.overall_accuracy >= 0.8 %}#3fb950{% elif stats.overall_accuracy >= 0.6 %}#d2991d{% else %}#f85149{% endif %};">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered else "-" }}{% if stats.total_questions_answered %}%{% endif %}</div>
-                <div class="label">正确率</div>
-            </div>
-            <div class="stat-card"><div class="value" style="color:var(--accent);">{{ srs_stats.due }}</div><div class="label">待复习</div></div>
-            <div class="stat-card"><div class="value" style="color:var(--green);">{{ srs_stats.mature }}</div><div class="label">已掌握</div></div>
+            <div class="stat-card"><div class="num">{{ stats.total_quizzes }}</div><div class="lbl">总测验</div></div>
+            <div class="stat-card"><div class="num">{{ stats.total_questions_answered }}</div><div class="lbl">总答题</div></div>
+            <div class="stat-card"><div class="num" style="color:{% if stats.overall_accuracy >= 0.8 %}#34d399{% elif stats.overall_accuracy >= 0.6 %}#fbbf24{% else %}#f87171{% endif %};">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered else "-" }}{% if stats.total_questions_answered %}%{% endif %}</div><div class="lbl">正确率</div></div>
+            <div class="stat-card"><div class="num" style="color:var(--accent)">{{ srs_stats.due }}</div><div class="lbl">待复习</div></div>
+            <div class="stat-card"><div class="num" style="color:var(--green)">{{ srs_stats.mature }}</div><div class="lbl">已掌握</div></div>
         </div>
-
-        <!-- Heatmap -->
         <div class="card" style="margin-bottom:1.5rem;">
             <h2>📅 复习热力图（近30天）</h2>
             <div class="heatmap" id="heatmap"></div>
-            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-top:0.3rem;">
-                <span>30天前</span><span>今天</span>
-            </div>
         </div>
-
-        <!-- Recent sessions -->
         {% if recent_sessions %}
-        <div class="card">
-            <h2>📋 最近学习记录</h2>
+        <div class="card"><h2>📋 最近学习记录</h2>
             <table>
                 <tr><th>日期</th><th>模式</th><th>文件</th></tr>
                 {% for s in recent_sessions %}
-                <tr>
-                    <td>{{ s.created_at[:10] }}</td>
-                    <td>
-                        {% if s.mode == 'quiz' %}📝 测验
-                        {% elif s.mode == 'present' %}🎤 讲述
-                        {% elif s.mode == 'deepdive' %}🔬 深挖
-                        {% else %}{{ s.mode }}{% endif %}
-                    </td>
-                    <td style="font-size:0.8rem;color:var(--text-dim);">{{ s.file_paths[:3]|join(', ') }}{% if s.file_paths|length > 3 %}...{% endif %}</td>
-                </tr>
+                <tr><td>{{ s.created_at[:10] }}</td><td>{% if s.mode=='quiz' %}📝{% elif s.mode=='present' %}🎤{% elif s.mode=='deepdive' %}🔬{% else %}{{ s.mode }}{% endif %}</td><td style="font-size:.76rem;color:var(--text-dim);">{{ s.file_paths[:3]|join(', ') }}</td></tr>
                 {% endfor %}
             </table>
         </div>
         {% endif %}
-
         {% if due_count > 0 %}
-        <div style="margin-top:1.5rem;">
-            <a href="/review" class="btn btn-primary">🔄 开始间隔复习（{{ due_count }}题待复习）</a>
-        </div>
+        <div style="margin-top:1.5rem;"><a href="/review" class="btn btn-primary">🔄 开始间隔复习（{{ due_count }}题）</a></div>
         {% endif %}
     </main>
 </div>
-
-<style>
-.heatmap { display:flex; gap:3px; flex-wrap:wrap; }
-.heat-cell { width:13px; height:13px; border-radius:2px; }
-</style>
-
 <script>
-// Render heatmap client-side
-const heatmapData = {{ heatmap | tojson | safe }};
-const container = document.getElementById('heatmap');
-const colors = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'];
-
-for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().split('T')[0];
-    const count = heatmapData[key] || 0;
-    const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
-    const cell = document.createElement('div');
-    cell.className = 'heat-cell';
-    cell.style.background = colors[level];
-    cell.title = key + ': ' + count + ' 次复习';
-    container.appendChild(cell);
-}
+const hm = {{ heatmap | tojson | safe }};
+const c = ['#161b22','#0e4429','#006d32','#26a641','#39d353'];
+const ct = document.getElementById('heatmap');
+for(let i=29;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=d.toISOString().split('T')[0];const n=hm[k]||0;const l=n===0?0:n<=2?1:n<=5?2:n<=10?3:4;const e=document.createElement('div');e.className='heat-cell';e.style.background=c[l];e.title=k+': '+n+' reviews';ct.appendChild(e);}
 </script>
 {% endblock %}

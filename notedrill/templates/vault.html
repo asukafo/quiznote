@@ -1,210 +1,161 @@
 {% extends "base.html" %}
-{% block title %}QuizNote — Vault{% endblock %}
+{% block title %}NoteDrill{% endblock %}
 {% block content %}
 
-<div class="app-layout">
+<div class="app">
 
-    <!-- ============================================================ -->
-    <!-- LEFT SIDEBAR — FILE TREE -->
-    <!-- ============================================================ -->
+    <!-- SIDEBAR -->
     <aside class="sidebar">
-        <div class="sidebar-header">
-            <span class="sidebar-title">📁 {{ tree.name }}</span>
+        <div class="sidebar-head">
+            <h2>📁 {{ tree.name }}</h2>
             <span class="sidebar-meta">{{ total_files }} files</span>
         </div>
 
         <div class="sidebar-actions">
-            <div>
-                <a href="#" onclick="selectAll()" class="action-link">全选</a>
-                <a href="#" onclick="deselectAll()" class="action-link">取消</a>
-            </div>
-            <a href="/dashboard" class="action-link" style="font-weight:600;">📊</a>
+            <a onclick="selectAll()">全选</a>
+            <a onclick="deselectAll()">取消</a>
         </div>
+
         <div class="sidebar-nav">
-            <a href="/" class="nav-pill accent">📁 笔记</a>
+            <a href="/" class="nav-pill on">📁 笔记</a>
             <a href="/dashboard" class="nav-pill">📊 仪表盘</a>
             {% if srs_stats.due > 0 %}
-            <a href="/review" class="nav-pill"><span class="badge-dot accent"></span>{{ srs_stats.due }} 待复习</a>
+            <a href="/review" class="nav-pill">{{ srs_stats.due }} 待复习</a>
             {% endif %}
         </div>
 
-        <form id="generateForm" action="/generate" method="post">
-            <div class="tree-container">
-                {% macro render_node(node) %}
-                    {% if node.type == "directory" %}
-                        <details class="tree-dir" {% if node.path == "" or node.path == tree.name %}open{% endif %}>
-                            <summary class="tree-dir-header">
-                                <input type="checkbox" class="tree-check dir-check"
-                                       data-dir="{{ node.path }}"
-                                       onchange="toggleDir(this)"
-                                       onclick="event.stopPropagation()">
-                                <span class="tree-icon">▸</span>
-                                <span class="tree-name">{{ node.name }}</span>
-                                <span class="tree-count">{{ node.children|length }}</span>
+        <form id="genForm" action="/generate" method="post">
+            <div class="tree">
+                {% macro node(n) %}
+                    {% if n.type == "directory" %}
+                        <details class="tree-dir" {% if n.path == "" or n.path == tree.name %}open{% endif %}>
+                            <summary>
+                                <input type="checkbox" class="tree-check dir-check" data-dir="{{ n.path }}"
+                                       onchange="toggleDir(this)" onclick="event.stopPropagation()">
+                                <span class="arr">▸</span>
+                                <span class="dir-name">{{ n.name }}</span>
+                                <span class="dir-count">{{ n.children|length }}</span>
                             </summary>
                             <div class="tree-children">
-                                {% for child in node.children %}
-                                    {{ render_node(child) }}
-                                {% endfor %}
+                                {% for c in n.children %}{{ node(c) }}{% endfor %}
                             </div>
                         </details>
                     {% else %}
                         <label class="tree-file">
-                            <input type="checkbox" name="file_paths" value="{{ node.path }}"
-                                   class="tree-check file-check"
-                                   data-dir="{{ node.path.rsplit('/', 1)[0] if '/' in node.path else '' }}">
-                            <span class="tree-icon file-icon">📄</span>
-                            <span class="tree-name" title="{{ node.title }}">{{ node.title }}</span>
-                            <span class="tree-ext">.md</span>
+                            <input type="checkbox" name="file_paths" value="{{ n.path }}" class="tree-check file-check">
+                            <span class="file-name" title="{{ n.title }}">{{ n.title }}</span>
+                            <span class="file-ext">.md</span>
                         </label>
                     {% endif %}
                 {% endmacro %}
-
-                {% for child in tree.children %}
-                    {{ render_node(child) }}
-                {% endfor %}
+                {% for c in tree.children %}{{ node(c) }}{% endfor %}
             </div>
 
-            <!-- Generation controls -->
-            <div class="generate-bar">
-                {% if error %}
-                <div class="flash-error">{{ error }}</div>
-                {% endif %}
-
-                <!-- Mode selector -->
-                <div style="margin-bottom:0.5rem;">
-                    <label style="font-size:0.75rem;color:var(--text-dim);">学习模式</label>
-                    <select name="mode" class="gen-select" style="width:100%;">
+            <div class="gen-bar">
+                {% if error %}<div class="alert alert-err">{{ error }}</div>{% endif %}
+                <div class="form-group" style="margin-bottom:.4rem;">
+                    <select name="mode" class="gen-select">
                         <option value="quiz">📝 测验模式</option>
                         <option value="present">🎤 讲述模式</option>
                         <option value="deepdive">🔬 刨根问底</option>
                     </select>
                 </div>
-
-                <div class="generate-row" id="quizOptions">
+                <div class="gen-row" id="quizOpts">
                     <select name="count" class="gen-select">
-                        <option value="5">5题</option>
-                        <option value="10" selected>10题</option>
-                        <option value="20">20题</option>
+                        <option value="5">5题</option><option value="10" selected>10题</option><option value="20">20题</option>
                     </select>
                     <select name="qtype" class="gen-select">
-                        <option value="all">全部</option>
-                        <option value="mc">选择</option>
-                        <option value="tf">判断</option>
-                        <option value="code">编程</option>
-                        <option value="short">简答</option>
+                        <option value="all">全部</option><option value="mc">选择</option><option value="tf">判断</option>
+                        <option value="code">编程</option><option value="short">简答</option>
                     </select>
                     <select name="difficulty" class="gen-select">
-                        <option value="mixed">混合</option>
-                        <option value="easy">简单</option>
-                        <option value="medium">中等</option>
-                        <option value="hard">困难</option>
+                        <option value="mixed">混合</option><option value="easy">简单</option>
+                        <option value="medium">中等</option><option value="hard">困难</option>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-primary gen-btn">🚀 开始学习</button>
+                <button type="submit" class="btn btn-primary" style="width:100%;">🚀 开始学习</button>
             </div>
         </form>
     </aside>
 
-    <!-- ============================================================ -->
-    <!-- RIGHT PANEL — GENERATED QUESTIONS -->
-    <!-- ============================================================ -->
+    <!-- CONTENT -->
     <main class="content">
         {% if generated %}
-            <div class="content-header">
-                <h2>✅ 生成了 {{ generated|length }} 道题</h2>
+            <div class="content-header" style="margin-bottom:1.5rem;">
+                <h2 style="font-size:1.1rem;font-weight:700;">✅ 生成了 {{ generated|length }} 道题</h2>
                 <a href="/quiz/start" class="btn btn-success">📝 开始答题</a>
             </div>
-            <div class="question-list">
+            <div class="q-list">
                 {% for q in generated %}
                 <div class="q-card">
-                    <div class="q-card-top">
+                    <div class="q-head">
                         <div class="q-badges">
                             <span class="badge badge-{{ q.type }}">{{ q.type }}</span>
                             <span class="badge badge-{{ q.difficulty }}">{{ q.difficulty }}</span>
-                            <span class="badge" style="background:var(--bg-hover);">{{ q.topic }}</span>
+                            <span class="badge" style="background:var(--surface)">{{ q.topic }}</span>
                         </div>
                         <div class="q-actions">
                             <a href="/question/{{ q.id }}/edit" class="btn btn-sm">✏️</a>
-                            <form action="/question/{{ q.id }}/delete" method="post" style="display:inline;"
-                                  onsubmit="return confirm('确定删除这道题？')">
-                                <button class="btn btn-sm" style="color:var(--red);">🗑</button>
+                            <form action="/question/{{ q.id }}/delete" method="post" style="display:inline"
+                                  onsubmit="return confirm('确定删除？')">
+                                <button class="btn btn-sm" style="color:var(--red)">🗑</button>
                             </form>
                         </div>
                     </div>
-                    <div class="q-question">{{ q.question }}</div>
+                    <div class="q-body">{{ q.question }}</div>
                     {% if q.options %}
-                    <div class="q-options">
-                        {% for opt in q.options %}
-                        <span class="q-opt">{{ opt.id }}) {{ opt.text[:80] }}</span>
-                        {% endfor %}
+                    <div class="q-opts">
+                        {% for o in q.options %}<span class="q-opt">{{ o.id }}) {{ o.text[:80] }}</span>{% endfor %}
                     </div>
                     {% endif %}
-                    {% if q.code_context %}
-                    <pre class="q-code">{{ q.code_context[:500] }}</pre>
-                    {% endif %}
+                    {% if q.code_context %}<pre class="q-code">{{ q.code_context[:500] }}</pre>{% endif %}
                     <details class="q-answer">
                         <summary>查看答案</summary>
-                        <div>正确答案：<strong>{{ q.correct_answer }}</strong></div>
+                        <div style="margin-top:.3rem"><strong>{{ q.correct_answer }}</strong></div>
                         <div>{{ q.explanation }}</div>
                     </details>
                 </div>
                 {% endfor %}
             </div>
         {% else %}
-            <div class="content-empty">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;">
                 {% if total_questions > 0 %}
-                <div class="hero-stats">
-                    <div class="hero-stat"><span class="hero-stat-num">{{ total_files }}</span><span class="hero-stat-label">笔记文件</span></div>
-                    <div class="hero-stat accent"><span class="hero-stat-num">{{ total_questions }}</span><span class="hero-stat-label">题库</span></div>
-                    <div class="hero-stat"><span class="hero-stat-num">{{ stats.total_quizzes }}</span><span class="hero-stat-label">测验</span></div>
-                    <div class="hero-stat green">
-                        <span class="hero-stat-num">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered > 0 else "-" }}{% if stats.total_questions_answered > 0 %}%{% endif %}</span>
-                        <span class="hero-stat-label">正确率</span>
-                    </div>
+                <div class="hero">
+                    <div class="hero-stat"><span class="hero-num">{{ total_files }}</span><span class="hero-label">笔记</span></div>
+                    <div class="hero-stat"><span class="hero-num" style="color:var(--accent)">{{ total_questions }}</span><span class="hero-label">题库</span></div>
+                    <div class="hero-stat"><span class="hero-num">{{ stats.total_quizzes }}</span><span class="hero-label">测验</span></div>
+                    <div class="hero-stat"><span class="hero-num" style="color:var(--green)">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered > 0 else "-" }}{% if stats.total_questions_answered > 0 %}%{% endif %}</span><span class="hero-label">正确率</span></div>
                 </div>
                 {% endif %}
-                <div class="welcome-card">
-                    <div class="icon">👈</div>
-                    <p style="font-weight:600;margin-bottom:0.4rem;">选择笔记，开始学习</p>
-                    <p style="font-size:0.82rem;color:var(--text-dim);">勾选文件或整个目录，选择学习模式，点击开始</p>
+                <div class="card" style="max-width:420px;text-align:center;padding:2rem;">
+                    <div style="font-size:2.5rem;margin-bottom:.75rem;">👈</div>
+                    <p style="font-weight:600;">选择笔记，开始学习</p>
+                    <p style="font-size:.8rem;color:var(--text-dim);margin-top:.3rem;">勾选文件或整个目录，选择学习模式</p>
                 </div>
-                <div style="margin-top:1.5rem;display:flex;gap:0.5rem;">
+                <div style="margin-top:1.5rem;display:flex;gap:.5rem;">
                     <a href="/quiz/start" class="btn">📝 答题</a>
                     <a href="/stats" class="btn">📊 统计</a>
                 </div>
             </div>
         {% endif %}
     </main>
-
 </div>
 
 <script>
-// ---- Checkbox cascading ----
 function toggleDir(cb) {
     const dir = cb.closest('.tree-dir');
     if (!dir) return;
-    const allChecks = dir.querySelectorAll('.tree-check');
-    allChecks.forEach(c => c.checked = cb.checked);
-
-    // If unchecking, also uncheck parent directories
+    dir.querySelectorAll('.tree-check').forEach(c => c.checked = cb.checked);
     if (!cb.checked) {
-        let parent = dir.parentElement?.closest('.tree-dir');
-        while (parent) {
-            const pCheck = parent.querySelector(':scope > .tree-dir-header > .dir-check');
-            if (pCheck) pCheck.checked = false;
-            parent = parent.parentElement?.closest('.tree-dir');
+        let p = dir.parentElement?.closest('.tree-dir');
+        while (p) {
+            const pc = p.querySelector(':scope > summary > .dir-check');
+            if (pc) pc.checked = false;
+            p = p.parentElement?.closest('.tree-dir');
         }
     }
 }
-
-function selectAll() {
-    document.querySelectorAll('.tree-check').forEach(c => { c.checked = true; });
-}
-
-function deselectAll() {
-    document.querySelectorAll('.tree-check').forEach(c => { c.checked = false; });
-}
+function selectAll() { document.querySelectorAll('.tree-check').forEach(c => c.checked = true); }
+function deselectAll() { document.querySelectorAll('.tree-check').forEach(c => c.checked = false); }
 </script>
-
 {% endblock %}
