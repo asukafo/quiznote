@@ -667,7 +667,6 @@ class Storage:
 
     def save_session(self, session_id: str, mode: str, file_paths: list[str],
                      notes: dict | None = None) -> None:
-        import json
         self.conn.execute(
             """INSERT OR REPLACE INTO learning_sessions (id, mode, file_paths_json, notes_json, created_at)
                VALUES (?, ?, ?, ?, ?)""",
@@ -683,7 +682,6 @@ class Storage:
         self.conn.commit()
 
     def get_sessions(self, limit: int = 20) -> list[dict]:
-        import json
         rows = self.conn.execute(
             "SELECT * FROM learning_sessions ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()

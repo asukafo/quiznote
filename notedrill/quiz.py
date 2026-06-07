@@ -118,12 +118,12 @@ def create_quiz(
     elif mode == "weakest":
         weakest_topics = storage.get_weakest_topics(limit=3)
         if weakest_topics:
-            questions: list[Question] = []
+            weakest_qs: list[Question] = []
             for t in weakest_topics:
                 qs = storage.list_questions(topic=t, limit=count // len(weakest_topics) + 1)
-                questions.extend(qs)
-            random.shuffle(questions)
-            selected_ids = [q.id for q in questions[:count]]
+                weakest_qs.extend(qs)
+            random.shuffle(weakest_qs)
+            selected_ids = [q.id for q in weakest_qs[:count]]
         else:
             # Fallback to random if no weak topics
             questions = storage.list_questions(limit=count * 2)

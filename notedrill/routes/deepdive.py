@@ -75,7 +75,7 @@ def register_routes(app: FastAPI) -> None:
         if action == "summary" or session["depth"] >= session["max_depth"]:
             summary_prompt = f"""学习者完成刨根问底学习。主题：{session['topic']}
 
-对话：{chr(10).join(f"Q{h['depth']}: {h['question']}\\nA: {h['answer'] or '(未答)'}" for h in session['history'])}
+对话：{"\n".join(f"Q{h['depth']}: {h['question']}\\nA: {h['answer'] or '(未答)'}" for h in session['history'])}
 
 输出JSON：{{"overall_feedback":"...","mastered":["掌握的"],"gaps":["不足的"],"suggestions":["建议"]}}"""
 
@@ -99,7 +99,7 @@ def register_routes(app: FastAPI) -> None:
         # Next deeper question
         next_depth = session["depth"] + 1
         followup_prompt = f"""学习者正在深入学习"{session['topic']}"。对话历史：
-{chr(10).join(f"Q{h['depth']}: {h['question']}\\nA: {h['answer']}" for h in session['history'])}
+{"\n".join(f"Q{h['depth']}: {h['question']}\\nA: {h['answer']}" for h in session['history'])}
 
 刚回答Q{session['depth']}："{user_answer}"
 

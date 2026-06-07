@@ -23,10 +23,15 @@ def register_routes(app: FastAPI) -> None:
         _, storage = _get_cfg_storage()
         due_ids = storage.get_due_srs_questions(20)
         if not due_ids:
-            questions = storage.list_questions(limit=10)
-            question_ids = [q.id for q in questions]
+            # No due cards — pick fresh questions that haven't been reviewed yet
+            questions = storage.list_questions(limit=20)
+            questions = [q for q in questions if storage.get_srs_item(q.id) is None]
+            if not questions:
+                # Truly nothing new — pick any 10
+                questions = storage.list_questions(limit=10)
+            else:
+                questions = questions[:10]
         else:
-            question_ids = due_ids
             questions = [storage.get_question(qid) for qid in due_ids]
             questions = [q for q in questions if q]
 

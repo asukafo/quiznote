@@ -393,7 +393,6 @@ class QuestionGenerator:
 
         if progress_callback:
             progress_callback("claude", f"Calling Claude ({self.model})...")
-            import select
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -801,6 +800,12 @@ class QuestionCritic:
                 options = [Option(id=o["id"], text=o["text"]) for o in revised["options"]]
 
             qtype = revised.get("type", original.type)
+            type_aliases = {
+                "single_choice": "multiple_choice",
+                "choice": "multiple_choice",
+                "multi_choice": "multiple_choice",
+            }
+            qtype = type_aliases.get(qtype, qtype)
             difficulty_val = revised.get("difficulty", original.difficulty)
             if difficulty_val not in ("easy", "medium", "hard"):
                 difficulty_val = "medium"

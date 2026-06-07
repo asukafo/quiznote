@@ -6,19 +6,26 @@ and builds directory trees for the web UI.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from pathlib import Path
 
 import frontmatter
 
-from .models import Note, Section, new_id
+from .models import Note, Section
+
+
+def _section_id(note_path: str, heading: str, level: int) -> str:
+    """Generate a deterministic section ID from content identity."""
+    seed = f"{note_path}::{heading}::{level}"
+    return hashlib.sha256(seed.encode()).hexdigest()[:12]
 
 # ---------------------------------------------------------------------------
 # Regex patterns
 # ---------------------------------------------------------------------------
 
-WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[^\]])*\]\]")
+WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]+)?\]\]")
 TAG_RE = re.compile(r"(?:^|\s)#([a-zA-Z一-鿿][\w一-鿿/-]*)")
 CODE_BLOCK_RE = re.compile(r"```(\w+)?\n(.*?)```", re.DOTALL)
 
@@ -41,7 +48,7 @@ def extract_code_blocks(text: str) -> list[str]:
 # Markdown → sections
 # ---------------------------------------------------------------------------
 
-def _split_sections(md_text: str) -> list[Section]:
+def _split_sections(md_text: str, note_path: str = "") -> list[Section]:
     lines = md_text.split("\n")
     sections: list[Section] = []
     current_heading = ""
@@ -57,7 +64,7 @@ def _split_sections(md_text: str) -> list[Section]:
                 body = "\n".join(current_lines).strip()
                 sections.append(
                     Section(
-                        id=new_id(),
+                        id=_section_id(note_path, current_heading, current_level),
                         heading=current_heading,
                         level=current_level,
                         content=body,
@@ -73,7 +80,7 @@ def _split_sections(md_text: str) -> list[Section]:
     body = "\n".join(current_lines).strip()
     sections.append(
         Section(
-            id=new_id(),
+            id=_section_id(note_path, current_heading, current_level),
             heading=current_heading,
             level=current_level,
             content=body,
@@ -245,7 +252,7 @@ def parse_note_file(file_path: str, vault_path: str) -> Note:
     all_tags = list(set(fm_tags + extract_tags(content)))
 
     links = extract_wikilinks(content)
-    sections = _split_sections(content)
+    sections = _split_sections(content, rel_path)
 
     return Note(
         path=rel_path,

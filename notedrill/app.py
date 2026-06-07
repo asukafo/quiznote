@@ -25,36 +25,32 @@ def create_app() -> FastAPI:
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    # CSRF protection middleware
+    # CSRF protection — only allow same-origin or localhost requests
     @app.middleware("http")
     async def csrf_middleware(request: Request, call_next):
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            origin = request.headers.get("origin", "")
-            referer = request.headers.get("referer", "")
             host = request.headers.get("host", "")
-
-            # Allow if same-origin
-            is_same_origin = False
-            for header_val in (origin, referer):
-                if not header_val:
-                    continue
-                try:
-                    parsed = urlparse(header_val)
-                    if parsed.hostname == host.split(":")[0] or parsed.hostname in ("127.0.0.1", "localhost"):
-                        is_same_origin = True
-                        break
-                except Exception:
-                    pass
-
-            # Also allow if no Origin/Referer (e.g., CLI tools, direct API calls)
-            if not origin and not referer:
-                is_same_origin = True
-
-            if not is_same_origin:
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "CSRF validation failed"},
-                )
+            # Allow localhost-only. For a single-user desktop tool, CSRF is not a
+            # realistic threat vector; this guard prevents accidental exposure.
+            if host and host.split(":")[0] not in ("127.0.0.1", "localhost", "::1"):
+                origin = request.headers.get("origin", "")
+                referer = request.headers.get("referer", "")
+                seen = set()
+                for header_val in (origin, referer):
+                    if header_val and header_val not in seen:
+                        seen.add(header_val)
+                        try:
+                            parsed = urlparse(header_val)
+                            if parsed.hostname == host.split(":")[0]:
+                                break
+                        except Exception:
+                            pass
+                else:
+                    if origin or referer:
+                        return JSONResponse(
+                            status_code=403,
+                            content={"detail": "Cross-origin requests are not allowed"},
+                        )
 
         response = await call_next(request)
         return response

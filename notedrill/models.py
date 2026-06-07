@@ -72,7 +72,7 @@ class Question(BaseModel):
 # Quiz & answer models
 # ---------------------------------------------------------------------------
 
-QuizMode = Literal["topic", "random", "weakest", "exam"]
+QuizMode = Literal["topic", "random", "weakest", "exam", "review"]
 
 
 class Quiz(BaseModel):
