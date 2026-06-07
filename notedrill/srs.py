@@ -1,4 +1,4 @@
-"""SM-2 Spaced Repetition System for QuizNote.
+"""SM-2 Spaced Repetition System for NoteDrill.
 
 Based on the SuperMemo 2 algorithm by Piotr Wozniak.
 Tracks review history per question and schedules optimal review dates.

@@ -362,12 +362,14 @@ class QuestionGenerator:
         question_types: list[QuestionType] | None = None,
         difficulty: str = "mixed",
         topic: str | None = None,
+        progress_callback=None,
     ) -> list[Question]:
         """Generate questions from a list of section dicts (from storage).
 
         Each section dict has: id, note_path, heading, level, content, code_blocks.
 
-        Returns list of Question objects with source_note and source_section populated.
+        If progress_callback is provided, it will be called with (phase, message)
+        tuples during generation (e.g. ("claude", "Generating...")).
         """
         if question_types is None:
             question_types = ["multiple_choice"]
@@ -389,19 +391,52 @@ class QuestionGenerator:
             "--max-budget-usd", "1",
         ]
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-
-        if result.returncode != 0:
-            raw_text = result.stdout + result.stderr
-            if not raw_text.strip():
-                raise RuntimeError(f"claude CLI failed (exit {result.returncode}): {result.stderr[:300]}")
+        if progress_callback:
+            progress_callback("claude", f"Calling Claude ({self.model})...")
+            import select
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                import threading
+                stderr_lines: list[str] = []
+                def _read_stderr():
+                    for line in process.stderr:
+                        line = line.strip()
+                        if line:
+                            stderr_lines.append(line)
+                            progress_callback("claude", line)
+                t = threading.Thread(target=_read_stderr, daemon=True)
+                t.start()
+                stdout, _ = process.communicate(timeout=120)
+                t.join(timeout=1)
+                raw_text = stdout
+                if process.returncode != 0 and not raw_text.strip():
+                    err_text = "\n".join(stderr_lines)
+                    raise RuntimeError(f"claude CLI failed (exit {process.returncode}): {err_text[:300]}")
+            except subprocess.TimeoutExpired:
+                process.kill()
+                raise RuntimeError("Claude CLI timed out after 120s")
         else:
-            raw_text = result.stdout
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+            if result.returncode != 0:
+                raw_text = result.stdout + result.stderr
+                if not raw_text.strip():
+                    raise RuntimeError(f"claude CLI failed (exit {result.returncode}): {result.stderr[:300]}")
+            else:
+                raw_text = result.stdout
+
+        if progress_callback:
+            progress_callback("parse", "Parsing Claude response...")
 
         raw_questions = _extract_json(raw_text)
 
@@ -508,15 +543,18 @@ class QuestionGenerator:
         question_types: list[QuestionType] | None = None,
         difficulty: str = "mixed",
         topic: str | None = None,
+        progress_callback=None,
     ) -> list[Question]:
         if count <= 10:
-            return self.generate_from_sections(sections, count, question_types, difficulty, topic)
+            return self.generate_from_sections(sections, count, question_types, difficulty, topic,
+                                               progress_callback=progress_callback)
 
         all_questions: list[Question] = []
         remaining = count
         while remaining > 0:
             batch_count = min(remaining, 10)
-            questions = self.generate_from_sections(sections, batch_count, question_types, difficulty, topic)
+            questions = self.generate_from_sections(sections, batch_count, question_types, difficulty, topic,
+                                                   progress_callback=progress_callback)
             all_questions.extend(questions)
             remaining -= batch_count
         return all_questions

@@ -1,4 +1,4 @@
-"""Configuration management for QuizNote."""
+"""Configuration management for NoteDrill."""
 
 from __future__ import annotations
 
@@ -11,13 +11,16 @@ from pydantic import BaseModel, Field
 
 
 # Default locations
-CONFIG_DIR = Path.home() / ".quiznote"
+CONFIG_DIR = Path.home() / ".notedrill"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
+# Legacy config location for backward compat
+LEGACY_CONFIG_DIR = Path.home() / ".quiznote"
+LEGACY_CONFIG_FILE = LEGACY_CONFIG_DIR / "config.toml"
 DEFAULT_VAULT = Path.cwd() / "notes"
 
 
 class Config(BaseModel):
-    """QuizNote configuration."""
+    """NoteDrill configuration."""
 
     vault_path: str = str(DEFAULT_VAULT)
     anthropic_api_key: str = ""
@@ -47,20 +50,24 @@ def load_config() -> Config:
     """Load config from file, falling back to env vars and defaults."""
     data: dict[str, Any] = {}
 
-    # 1. Load from config file
-    file_data = _load_toml(CONFIG_FILE)
+    # 1. Load from config file (new location first, then legacy)
+    config_path = CONFIG_FILE
+    if not CONFIG_FILE.exists() and LEGACY_CONFIG_FILE.exists():
+        config_path = LEGACY_CONFIG_FILE
+    file_data = _load_toml(config_path)
     data.update(file_data)
 
-    # 2. Env vars override file
+    # 2. Env vars override file (new prefix first, legacy as fallback)
     env_map = {
-        "vault_path": "QUIZNOTE_VAULT",
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
-        "anthropic_model": "QUIZNOTE_MODEL",
-        "db_path": "QUIZNOTE_DB",
-        "web_port": "QUIZNOTE_PORT",
+        "vault_path": ("NOTEDRILL_VAULT", "QUIZNOTE_VAULT"),
+        "anthropic_api_key": ("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+        "anthropic_model": ("NOTEDRILL_MODEL", "QUIZNOTE_MODEL"),
+        "db_path": ("NOTEDRILL_DB", "QUIZNOTE_DB"),
+        "web_port": ("NOTEDRILL_PORT", "QUIZNOTE_PORT"),
     }
-    for key, env in env_map.items():
-        if val := os.environ.get(env):
+    for key, (new_env, legacy_env) in env_map.items():
+        val = os.environ.get(new_env) or os.environ.get(legacy_env)
+        if val:
             data[key] = val
             if key == "web_port":
                 data[key] = int(val)

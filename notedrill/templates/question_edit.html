@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}QuizNote — Edit Question{% endblock %}
+{% block title %}NoteDrill — Edit Question{% endblock %}
 {% block content %}
 
 <h1 style="margin-bottom:1rem;">✏️ 编辑题目</h1>
@@ -20,7 +20,7 @@
                        style="width:90%;background:var(--bg);border:1px solid var(--border);padding:0.3rem;">
             </div>
             {% endfor %}
-            <small style="color:var(--text-dim);">选项暂不支持在线修改，如需修改请用 CLI: quiznote question edit</small>
+            <small style="color:var(--text-dim);">选项暂不支持在线修改，如需修改请用 CLI: notedrill question edit</small>
         </div>
         {% endif %}
         {% if question.code_context %}

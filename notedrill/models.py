@@ -1,4 +1,4 @@
-"""Data models for QuizNote."""
+"""Data models for NoteDrill."""
 
 from __future__ import annotations
 

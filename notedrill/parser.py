@@ -57,6 +57,7 @@ def _split_sections(md_text: str) -> list[Section]:
                 body = "\n".join(current_lines).strip()
                 sections.append(
                     Section(
+                        id=new_id(),
                         heading=current_heading,
                         level=current_level,
                         content=body,

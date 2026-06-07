@@ -1,4 +1,4 @@
-"""FastAPI web interface — QuizNote v0.4.
+"""FastAPI web interface — NoteDrill v0.4.
 
 Four learning modes:
   Quiz    — Generate & answer questions (SM-2 spaced repetition)
@@ -39,10 +39,11 @@ _sessions: dict[str, QuizSession] = {}
 _generation_tasks: dict[str, dict] = {}
 _deepdive_sessions: dict[str, dict] = {}
 _present_sessions: dict[str, dict] = {}
+_vault_tree_cache: dict = {}  # {"tree": ..., "mtime": ..., "vault_path": ...}
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="QuizNote", version="0.4.0")
+    app = FastAPI(title="NoteDrill", version="0.4.0")
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     _setup_routes(app)
@@ -53,6 +54,7 @@ def _get_cfg_storage():
     cfg = load_config()
     storage = Storage(cfg.resolve_db_path())
     storage.init_db()
+    storage.migrate()
     return cfg, storage
 
 
@@ -72,10 +74,37 @@ def _render(template: str, request: Request, **kwargs) -> HTMLResponse:
     )
 
 
+def _get_cached_tree(vault_path: str) -> dict:
+    """Return cached vault tree, rebuilding only if vault mtime changed."""
+    import os as _os
+    try:
+        current_mtime = _os.path.getmtime(vault_path)
+    except OSError:
+        current_mtime = 0
+
+    cache = _vault_tree_cache
+    if (cache.get("vault_path") == vault_path
+            and cache.get("mtime") == current_mtime
+            and cache.get("tree") is not None):
+        return cache["tree"]
+
+    tree = list_vault_tree(vault_path)
+    _vault_tree_cache["tree"] = tree
+    _vault_tree_cache["mtime"] = current_mtime
+    _vault_tree_cache["vault_path"] = vault_path
+    return tree
+
+
+def _invalidate_tree_cache() -> None:
+    """Invalidate the vault tree cache (called after reparse)."""
+    _vault_tree_cache.clear()
+
+
 def _call_claude(prompt: str, schema: dict | None = None, budget: float = 1.0) -> dict:
     """Synchronous claude -p call returning structured_output."""
     import subprocess
-    cmd = ["claude", "-p", prompt, "--model", "sonnet",
+    model = load_config().anthropic_model or "sonnet"
+    cmd = ["claude", "-p", prompt, "--model", model,
            "--output-format", "json", "--max-budget-usd", str(budget)]
     if schema:
         cmd += ["--json-schema", json.dumps(schema)]
@@ -185,7 +214,7 @@ def _setup_routes(app: FastAPI):
     @app.get("/", response_class=HTMLResponse)
     async def vault(request: Request, show_generated: str = ""):
         cfg, storage = _get_cfg_storage()
-        tree = list_vault_tree(cfg.vault_path)
+        tree = _get_cached_tree(cfg.vault_path)
         total_files = count_md_files(tree)
         total_questions = storage.count_questions()
         stats = storage.get_stats()
@@ -206,6 +235,7 @@ def _setup_routes(app: FastAPI):
                 (s.id, s.heading, s.level, s.content, s.code_blocks)
                 for s in note.sections
             ])
+        _invalidate_tree_cache()
         return RedirectResponse("/", status_code=303)
 
     # ==================================================================
@@ -220,7 +250,7 @@ def _setup_routes(app: FastAPI):
         form = await request.form()
         selected_paths = form.getlist("file_paths")
         if not selected_paths:
-            tree = list_vault_tree(cfg.vault_path)
+            tree = _get_cached_tree(cfg.vault_path)
             return _render("vault.html", request, tree=tree,
                            total_files=count_md_files(tree),
                            total_questions=storage.count_questions(),
@@ -274,7 +304,7 @@ def _setup_routes(app: FastAPI):
     async def _start_present(request: Request, cfg, storage, file_paths: list[str]):
         content = _read_files_content(file_paths, cfg.vault_path)
         if not content.strip():
-            tree = list_vault_tree(cfg.vault_path)
+            tree = _get_cached_tree(cfg.vault_path)
             return _render("vault.html", request, tree=tree, error="选中的文件没有内容。")
 
         prompt = f"""你是知识脉络设计师。设计一个知识填空框架让学习者填充。
@@ -303,18 +333,29 @@ def _setup_routes(app: FastAPI):
                 "required": ["title", "sections"]
             })
         except Exception as e:
-            tree = list_vault_tree(cfg.vault_path)
+            tree = _get_cached_tree(cfg.vault_path)
             return _render("vault.html", request, tree=tree, error=f"生成脉络失败: {e}")
 
         session_id = new_id()
-        storage.save_session(session_id, "present", file_paths)
-        _present_sessions[session_id] = {"data": data, "file_paths": file_paths}
+        session_data = {"data": data, "file_paths": file_paths}
+        storage.save_session(session_id, "present", file_paths, notes=session_data)
+        _present_sessions[session_id] = session_data
         return _render("present.html", request, session_id=session_id,
                        title=data.get("title", ""), sections=data.get("sections", []))
 
     @app.post("/present/{session_id}/review", response_class=HTMLResponse)
     async def present_review(request: Request, session_id: str):
         session = _present_sessions.get(session_id)
+        if not session:
+            # Try restoring from DB
+            _, storage = _get_cfg_storage()
+            db_sessions = storage.get_sessions(limit=50)
+            for s in db_sessions:
+                if s["id"] == session_id and s["mode"] == "present":
+                    session = s.get("notes", {})
+                    if session:
+                        _present_sessions[session_id] = session
+                    break
         if not session:
             return _render("error.html", request, message="Session not found")
 
@@ -373,7 +414,7 @@ def _setup_routes(app: FastAPI):
     async def _start_deepdive(request: Request, cfg, storage, file_paths: list[str]):
         content = _read_files_content(file_paths, cfg.vault_path)
         if not content.strip():
-            tree = list_vault_tree(cfg.vault_path)
+            tree = _get_cached_tree(cfg.vault_path)
             return _render("vault.html", request, tree=tree, error="选中的文件没有内容。")
 
         prompt = f"""你是刨根问底的学习教练。根据以下笔记设计第一个深挖问题。
@@ -393,13 +434,14 @@ def _setup_routes(app: FastAPI):
             data = {"topic": "Error", "question": f"生成失败: {e}", "hint": "", "depth": 1}
 
         session_id = new_id()
-        storage.save_session(session_id, "deepdive", file_paths)
-        _deepdive_sessions[session_id] = {
+        session_data = {
             "topic": data["topic"], "file_paths": file_paths,
             "vault_path": cfg.vault_path, "depth": 1, "max_depth": 8,
             "history": [{"depth": 1, "question": data["question"], "answer": None, "followup": None}],
             "content": content[:10000],
         }
+        storage.save_session(session_id, "deepdive", file_paths, notes=session_data)
+        _deepdive_sessions[session_id] = session_data
         return _render("deepdive.html", request, session_id=session_id,
                        topic=data["topic"], question=data["question"],
                        hint=data["hint"], depth=1, max_depth=8, history=[])
@@ -407,6 +449,16 @@ def _setup_routes(app: FastAPI):
     @app.post("/deepdive/{session_id}/answer", response_class=HTMLResponse)
     async def deepdive_answer(request: Request, session_id: str):
         session = _deepdive_sessions.get(session_id)
+        if not session:
+            # Try restoring from DB
+            _, storage = _get_cfg_storage()
+            db_sessions = storage.get_sessions(limit=50)
+            for s in db_sessions:
+                if s["id"] == session_id and s["mode"] == "deepdive":
+                    session = s.get("notes", {})
+                    if session:
+                        _deepdive_sessions[session_id] = session
+                    break
         if not session:
             return _render("error.html", request, message="Session not found")
 
@@ -465,6 +517,11 @@ def _setup_routes(app: FastAPI):
         session["depth"] = next_depth
         session["history"].append({"depth": next_depth, "question": data["followup"],
                                    "answer": None, "followup": None})
+
+        # Persist session state
+        _, storage2 = _get_cfg_storage()
+        storage2.save_session(session_id, "deepdive", session.get("file_paths", []), notes=session)
+
         return _render("deepdive.html", request, session_id=session_id,
                        topic=session["topic"], question=data["followup"],
                        hint=data.get("hint", ""), depth=next_depth,
@@ -487,7 +544,7 @@ def _setup_routes(app: FastAPI):
             questions = [q for q in questions if q]
 
         if not questions:
-            return _render("vault.html", request, tree=list_vault_tree(load_config().vault_path),
+            return _render("vault.html", request, tree=_get_cached_tree(load_config().vault_path),
                            error="还没有题目。先出一些题吧。")
 
         session_id = new_id()

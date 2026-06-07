@@ -1,4 +1,4 @@
-"""SQLite storage layer for QuizNote."""
+"""SQLite storage layer for NoteDrill."""
 
 from __future__ import annotations
 
@@ -44,6 +44,10 @@ class Storage:
 
     def init_db(self) -> None:
         self.conn.executescript("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS notes (
                 path        TEXT PRIMARY KEY,
                 title       TEXT NOT NULL DEFAULT '',
@@ -132,6 +136,43 @@ class Storage:
             );
         """)
         self.conn.commit()
+
+    # ------------------------------------------------------------------
+    # Schema migrations
+    # ------------------------------------------------------------------
+
+    CURRENT_SCHEMA_VERSION = 1
+
+    def migrate(self) -> int:
+        """Run pending migrations. Returns the new schema version."""
+        # Ensure schema_version table exists
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL
+            );
+        """)
+        row = self.conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
+        current = row[0] if row and row[0] is not None else 0
+
+        migrations = [
+            (1, self._migrate_v1),
+        ]
+
+        for version, migrator in migrations:
+            if current < version:
+                migrator()
+                self.conn.execute(
+                    "INSERT INTO schema_version (version) VALUES (?)", (version,)
+                )
+                self.conn.commit()
+
+        return self.CURRENT_SCHEMA_VERSION
+
+    def _migrate_v1(self) -> None:
+        """Baseline migration — ensure all core tables exist."""
+        # All tables are already created in init_db() with IF NOT EXISTS.
+        # This migration is a no-op that records the baseline.
+        pass
 
     # ------------------------------------------------------------------
     # Notes

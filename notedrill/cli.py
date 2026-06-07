@@ -45,6 +45,7 @@ def get_storage() -> Storage:
         cfg = get_config()
         _storage = Storage(cfg.resolve_db_path())
         _storage.init_db()
+        _storage.migrate()
     return _storage
 
 
@@ -109,14 +110,15 @@ def init(
     # Init database
     storage = Storage(cfg.resolve_db_path())
     storage.init_db()
+    storage.migrate()
 
-    console.print(f"[green]✓[/green] QuizNote initialized!")
+    console.print(f"[green]✓[/green] NoteDrill initialized!")
     console.print(f"  Vault: {cfg.vault_path}")
     console.print(f"  Database: {cfg.resolve_db_path()}")
-    console.print(f"  Config: ~/.quiznote/config.toml")
+    console.print(f"  Config: ~/.notedrill/config.toml")
     console.print()
     console.print("Drop your Obsidian .md notes into the vault, then run:")
-    console.print("  [bold]quiznote generate[/bold]")
+    console.print("  [bold]notedrill generate[/bold]")
 
 
 # ---------------------------------------------------------------------------
@@ -224,13 +226,39 @@ def generate(
         console.print(f"[red]Error initializing generator: {e}[/red]")
         raise typer.Exit(1)
 
+    last_msg = [""]
+    def _show_progress(phase: str, msg: str):
+        # Show last streaming message from Claude CLI
+        if phase == "claude":
+            last_msg[0] = msg[:100]
+            console.print(f"  [dim]{last_msg[0]}[/dim]", end="\r")
+        elif phase == "parse" and last_msg[0]:
+            console.print()  # newline after streaming
+
     with Progress(
         SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
     ) as progress:
         task = progress.add_task("Generating questions via Claude Code...", total=None)
-        questions = generator.generate_batch(
-            notes, count=count, question_types=question_types, difficulty=difficulty, topic=topic
-        )
+        try:
+            # Use sections-based generation with progress
+            sections: list[dict] = []
+            for note in notes:
+                for s in note.sections:
+                    sections.append({
+                        "id": s.id, "note_path": note.path,
+                        "heading": s.heading, "level": s.level,
+                        "content": s.content, "code_blocks": s.code_blocks,
+                    })
+            questions = generator.generate_batch_from_sections(
+                sections, count=count, question_types=question_types,
+                difficulty=difficulty, topic=topic,
+                progress_callback=_show_progress,
+            )
+        except Exception:
+            # Fallback to legacy
+            questions = generator.generate_batch(
+                notes, count=count, question_types=question_types, difficulty=difficulty, topic=topic
+            )
         progress.update(task, completed=True)
 
     # ── Critic review step ──
@@ -449,7 +477,7 @@ def _review_quiz(storage: Storage, quiz_id: str):
 def _list_quizzes(storage: Storage):
     quizzes = storage.list_quizzes()
     if not quizzes:
-        console.print("[dim]No quizzes taken yet. Run [bold]quiznote take[/bold].</dim]")
+        console.print("[dim]No quizzes taken yet. Run [bold]notedrill take[/bold].</dim]")
         return
 
     table = Table(title="Quiz History")
@@ -471,7 +499,7 @@ def _list_quizzes(storage: Storage):
         )
 
     console.print(table)
-    console.print("\nRun [bold]quiznote review <id>[/bold] to see full details.")
+    console.print("\nRun [bold]notedrill review <id>[/bold] to see full details.")
 
 
 # ---------------------------------------------------------------------------
@@ -549,7 +577,7 @@ def list_cmd(
                 table.add_row(n.title, n.path, ", ".join(n.tags[:5]))
             console.print(table)
         else:
-            console.print("[dim]No notes indexed. Run [bold]quiznote parse[/bold].</dim>")
+            console.print("[dim]No notes indexed. Run [bold]notedrill parse[/bold].</dim>")
 
     elif resource in ("questions", "q"):
         questions = storage.list_questions(topic=topic, qtype=qtype, limit=limit)
@@ -819,17 +847,22 @@ def pregenerate(
 @app.command()
 def serve(
     port: int = typer.Option(8080, "--port", "-p", help="Port to listen on"),
-    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to (0.0.0.0 for LAN access)"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to"),
+    public: bool = typer.Option(False, "--public", help="Allow LAN access (binds to 0.0.0.0)"),
 ):
     """Start the web interface."""
     import uvicorn
     from .app import create_app
 
+    if public:
+        host = "0.0.0.0"
+        console.print("[yellow]⚠ Public mode: server accessible from LAN.[/yellow]")
+
     # Ensure db is initialized
     get_storage()
 
     web_app = create_app()
-    console.print(f"[green]QuizNote Web[/green] → http://{host}:{port}")
+    console.print(f"[green]NoteDrill Web[/green] → http://{host}:{port}")
     uvicorn.run(web_app, host=host, port=port, log_level="info")
 
 
