@@ -26,15 +26,7 @@
         <!-- Heatmap -->
         <div class="card" style="margin-bottom:1.5rem;">
             <h2>📅 复习热力图（近30天）</h2>
-            <div class="heatmap">
-                {% for day in range(30) %}
-                    {% set d = (now() - timedelta(days=29-day)).strftime('%Y-%m-%d') %}
-                    {% set count = heatmap.get(d, 0) %}
-                    <div class="heat-cell" title="{{ d }}: {{ count }} 次复习"
-                         style="background:{% if count == 0 %}#161b22{% elif count <= 2 %}#0e4429{% elif count <= 5 %}#006d32{% elif count <= 10 %}#26a641{% else %}#39d353{% endif %};"
-                    ></div>
-                {% endfor %}
-            </div>
+            <div class="heatmap" id="heatmap"></div>
             <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-top:0.3rem;">
                 <span>30天前</span><span>今天</span>
             </div>
@@ -72,6 +64,26 @@
 
 <style>
 .heatmap { display:flex; gap:3px; flex-wrap:wrap; }
-.heat-cell { width:14px; height:14px; border-radius:2px; }
+.heat-cell { width:13px; height:13px; border-radius:2px; }
 </style>
+
+<script>
+// Render heatmap client-side
+const heatmapData = {{ heatmap | tojson | safe }};
+const container = document.getElementById('heatmap');
+const colors = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'];
+
+for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    const count = heatmapData[key] || 0;
+    const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
+    const cell = document.createElement('div');
+    cell.className = 'heat-cell';
+    cell.style.background = colors[level];
+    cell.title = key + ': ' + count + ' 次复习';
+    container.appendChild(cell);
+}
+</script>
 {% endblock %}
