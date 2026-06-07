@@ -19,7 +19,7 @@ from .parser import parse_vault
 from .generator import QuestionGenerator, QuestionCritic, sections_to_text
 from .quiz import create_quiz, QuizSession
 from .grader import grade_answer, compute_score, AIGrader
-from .models import QuestionType
+from .models import QuestionType, QUESTION_TYPE_MAP, ALL_QUESTION_TYPES, note_sections_to_dicts
 
 app = typer.Typer(
     name="notedrill",
@@ -194,24 +194,15 @@ def generate(
     console.print(f"Found {len(notes)} notes. Generating questions...")
 
     # Map type shorthand
-    type_map = {
-        "mc": "multiple_choice",
-        "tf": "true_false",
-        "code": "programming",
-        "short": "short_answer",
-        "fill": "fill_blank",
-    }
     if qtype == "all":
-        question_types: list[QuestionType] = [
-            "multiple_choice", "true_false", "programming", "short_answer", "fill_blank"
-        ]
+        question_types = list(ALL_QUESTION_TYPES)
     else:
         question_types = []
         for t in qtype.split(","):
             t = t.strip()
-            if t in type_map:
-                question_types.append(type_map[t])  # type: ignore
-            elif t in ("multiple_choice", "true_false", "programming", "short_answer", "fill_blank"):
+            if t in QUESTION_TYPE_MAP:
+                question_types.append(QUESTION_TYPE_MAP[t])  # type: ignore
+            elif t in ALL_QUESTION_TYPES:
                 question_types.append(t)  # type: ignore
 
     if not question_types:
@@ -243,12 +234,7 @@ def generate(
             # Use sections-based generation with progress
             sections: list[dict] = []
             for note in notes:
-                for s in note.sections:
-                    sections.append({
-                        "id": s.id, "note_path": note.path,
-                        "heading": s.heading, "level": s.level,
-                        "content": s.content, "code_blocks": s.code_blocks,
-                    })
+                sections.extend(note_sections_to_dicts(note))
             questions = generator.generate_batch_from_sections(
                 sections, count=count, question_types=question_types,
                 difficulty=difficulty, topic=topic,
@@ -274,12 +260,7 @@ def generate(
             # Build sections text for critic
             sections: list[dict] = []
             for note in notes:
-                for s in note.sections:
-                    sections.append({
-                        "id": s.id, "note_path": note.path,
-                        "heading": s.heading, "level": s.level,
-                        "content": s.content, "code_blocks": s.code_blocks,
-                    })
+                sections.extend(note_sections_to_dicts(note))
             sections_text = sections_to_text(sections)
             questions, critic_summary = critic.review(questions, sections_text)
             progress.update(task, completed=True)
@@ -759,14 +740,10 @@ def pregenerate(
         console.print("[dim]Critic review: enabled[/dim]")
 
     # Map types
-    type_map = {"mc": "multiple_choice", "tf": "true_false", "code": "programming",
-                "short": "short_answer", "fill": "fill_blank"}
     if qtype == "all":
-        question_types: list[QuestionType] = [
-            "multiple_choice", "true_false", "programming", "short_answer", "fill_blank"
-        ]
+        question_types = list(ALL_QUESTION_TYPES)
     else:
-        question_types = [type_map.get(t.strip(), "multiple_choice") for t in qtype.split(",")]  # type: ignore
+        question_types = [QUESTION_TYPE_MAP.get(t.strip(), "multiple_choice") for t in qtype.split(",")]  # type: ignore
 
     if dry_run:
         for note in notes:
@@ -782,12 +759,7 @@ def pregenerate(
     # Build sections list once for critic reuse
     all_sections: list[dict] = []
     for note in notes:
-        for s in note.sections:
-            all_sections.append({
-                "id": s.id, "note_path": note.path,
-                "heading": s.heading, "level": s.level,
-                "content": s.content, "code_blocks": s.code_blocks,
-            })
+        all_sections.extend(note_sections_to_dicts(note))
     all_sections_text = sections_to_text(all_sections)
 
     # Process in batches of 5 notes

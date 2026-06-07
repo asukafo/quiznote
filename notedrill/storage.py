@@ -6,7 +6,7 @@ import json
 import sqlite3
 from typing import Any
 
-from .models import Answer, GlobalStats, Note, Question, Quiz, TopicStat
+from .models import Answer, GlobalStats, Note, Option, Question, Quiz, TopicStat, now as _now_utc
 
 
 def _row_to_dict(row: tuple[str, ...], cols: list[str]) -> dict[str, Any]:
@@ -181,13 +181,14 @@ class Storage:
     def save_note(self, note: Note) -> None:
         self.conn.execute(
             """INSERT OR REPLACE INTO notes (path, title, tags, links, content, parsed_at)
-               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+               VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 note.path,
                 note.title,
                 json.dumps(note.tags),
                 json.dumps(note.links),
                 note.content,
+                _now_utc(),
             ),
         )
         self.conn.commit()
@@ -266,7 +267,7 @@ class Storage:
         """Return sections by their IDs."""
         if not section_ids:
             return []
-        placeholders = ",".join("?" * len(section_ids))
+        placeholders = ",".join(["?"] * len(section_ids))
         rows = self.conn.execute(
             f"SELECT * FROM sections WHERE id IN ({placeholders})",
             section_ids,
@@ -398,8 +399,6 @@ class Storage:
         self.conn.commit()
 
     def _row_to_question(self, row: sqlite3.Row) -> Question:
-        from .models import Option
-
         opts = None
         if row["options_json"]:
             opts = [Option(**o) for o in json.loads(row["options_json"])]
@@ -477,8 +476,8 @@ class Storage:
 
     def complete_quiz(self, quiz_id: str, score: float) -> None:
         self.conn.execute(
-            "UPDATE quizzes SET completed_at = datetime('now'), score = ? WHERE id = ?",
-            (score, quiz_id),
+            "UPDATE quizzes SET completed_at = ?, score = ? WHERE id = ?",
+            (_now_utc(), score, quiz_id),
         )
         self.conn.commit()
 
@@ -535,14 +534,15 @@ class Storage:
     # ------------------------------------------------------------------
 
     def update_topic_stat(self, topic: str, correct: bool) -> None:
+        now_ts = _now_utc()
         self.conn.execute(
             """INSERT INTO topic_stats (topic, total_attempts, correct_count, last_attempted)
-               VALUES (?, 1, ?, datetime('now'))
+               VALUES (?, 1, ?, ?)
                ON CONFLICT(topic) DO UPDATE SET
                  total_attempts = total_attempts + 1,
                  correct_count = correct_count + ?,
-                 last_attempted = datetime('now')""",
-            (topic, 1 if correct else 0, 1 if correct else 0),
+                 last_attempted = ?""",
+            (topic, 1 if correct else 0, now_ts, 1 if correct else 0, now_ts),
         )
         self.conn.commit()
 
@@ -595,21 +595,22 @@ class Storage:
     def upsert_srs(self, question_id: str, repetitions: int, ease_factor: float,
                    interval_days: float, next_review_at: str, is_lapse: bool = False) -> None:
         existing = self.get_srs_item(question_id)
+        now_ts = _now_utc()
         if existing:
             self.conn.execute(
                 """UPDATE srs_items SET repetitions=?, ease_factor=?, interval_days=?,
-                   next_review_at=?, last_review_at=datetime('now'),
+                   next_review_at=?, last_review_at=?,
                    lapses=lapses + ?, total_reviews=total_reviews+1
                    WHERE question_id=?""",
-                (repetitions, ease_factor, interval_days, next_review_at,
+                (repetitions, ease_factor, interval_days, next_review_at, now_ts,
                  1 if is_lapse else 0, question_id),
             )
         else:
             self.conn.execute(
                 """INSERT INTO srs_items (question_id, repetitions, ease_factor,
                    interval_days, next_review_at, last_review_at, total_reviews)
-                   VALUES (?, ?, ?, ?, ?, datetime('now'), 1)""",
-                (question_id, repetitions, ease_factor, interval_days, next_review_at),
+                   VALUES (?, ?, ?, ?, ?, ?, 1)""",
+                (question_id, repetitions, ease_factor, interval_days, next_review_at, now_ts),
             )
         self.conn.commit()
 
@@ -617,24 +618,28 @@ class Storage:
         """Return question IDs due for review."""
         rows = self.conn.execute(
             """SELECT question_id FROM srs_items
-               WHERE next_review_at <= datetime('now') OR next_review_at = ''
+               WHERE (next_review_at <= ? OR next_review_at = '')
                ORDER BY next_review_at ASC LIMIT ?""",
-            (limit,),
+            (_now_utc(), limit),
         ).fetchall()
         return [r["question_id"] for r in rows]
 
     def get_srs_stats(self) -> dict:
         """Return SRS statistics."""
+        now_ts = _now_utc()
+        today_str = now_ts[:10]  # YYYY-MM-DD
         total = self.conn.execute("SELECT COUNT(*) FROM srs_items").fetchone()[0]
         due = self.conn.execute(
-            "SELECT COUNT(*) FROM srs_items WHERE next_review_at <= datetime('now') OR next_review_at = ''"
+            "SELECT COUNT(*) FROM srs_items WHERE (next_review_at <= ? OR next_review_at = '')",
+            (now_ts,),
         ).fetchone()[0]
         mature = self.conn.execute(
             "SELECT COUNT(*) FROM srs_items WHERE interval_days >= 21"
         ).fetchone()[0]
         # Reviews completed today
         today = self.conn.execute(
-            "SELECT COUNT(*) FROM srs_items WHERE date(last_review_at) = date('now')"
+            "SELECT COUNT(*) FROM srs_items WHERE substr(last_review_at, 1, 10) = ?",
+            (today_str,),
         ).fetchone()[0]
         return {
             "total": total,
@@ -645,12 +650,14 @@ class Storage:
 
     def get_review_history(self, days: int = 30) -> list[dict]:
         """Return review count per day for heatmap."""
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         rows = self.conn.execute(
-            """SELECT date(last_review_at) as day, COUNT(*) as count
+            """SELECT substr(last_review_at, 1, 10) as day, COUNT(*) as count
                FROM srs_items
-               WHERE last_review_at >= date('now', ?)
+               WHERE last_review_at >= ?
                GROUP BY day ORDER BY day""",
-            (f"-{days} days",),
+            (cutoff,),
         ).fetchall()
         return [{"day": r["day"], "count": r["count"]} for r in rows]
 
@@ -663,15 +670,15 @@ class Storage:
         import json
         self.conn.execute(
             """INSERT OR REPLACE INTO learning_sessions (id, mode, file_paths_json, notes_json, created_at)
-               VALUES (?, ?, ?, ?, datetime('now'))""",
-            (session_id, mode, json.dumps(file_paths), json.dumps(notes or {})),
+               VALUES (?, ?, ?, ?, ?)""",
+            (session_id, mode, json.dumps(file_paths), json.dumps(notes or {}), _now_utc()),
         )
         self.conn.commit()
 
     def complete_session(self, session_id: str) -> None:
         self.conn.execute(
-            "UPDATE learning_sessions SET completed_at = datetime('now') WHERE id = ?",
-            (session_id,),
+            "UPDATE learning_sessions SET completed_at = ? WHERE id = ?",
+            (_now_utc(), session_id),
         )
         self.conn.commit()
 

@@ -126,3 +126,39 @@ class GlobalStats(BaseModel):
         if self.total_questions_answered == 0:
             return 0.0
         return self.total_correct / self.total_questions_answered
+
+
+# ---------------------------------------------------------------------------
+# Shared constants & utilities
+# ---------------------------------------------------------------------------
+
+QUESTION_TYPE_MAP: dict[str, str] = {
+    "mc": "multiple_choice",
+    "tf": "true_false",
+    "code": "programming",
+    "short": "short_answer",
+    "fill": "fill_blank",
+}
+
+ALL_QUESTION_TYPES: list[QuestionType] = [
+    "multiple_choice", "true_false", "programming", "short_answer", "fill_blank"
+]
+
+
+def note_sections_to_dicts(note: Note) -> list[dict]:
+    """Convert a Note's sections to dicts for storage/generation.
+
+    Standardizes the section dict format used across storage, generator,
+    CLI, and web app.
+    """
+    return [
+        {
+            "id": s.id,
+            "note_path": note.path,
+            "heading": s.heading,
+            "level": s.level,
+            "content": s.content,
+            "code_blocks": s.code_blocks,
+        }
+        for s in note.sections
+    ]

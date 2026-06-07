@@ -75,21 +75,32 @@ def load_config() -> Config:
     return Config(**data)
 
 
+def _toml_escape(s: str) -> str:
+    """Escape a string for TOML literal output."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _toml_list(items: list) -> str:
+    """Format a list as TOML array."""
+    inner = ", ".join(f'"{_toml_escape(str(i))}"' for i in items)
+    return f"[{inner}]"
+
+
 def save_config(config: Config) -> None:
     """Save config to TOML file (never writes API key from env)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     lines = [
-        f'vault_path = "{config.vault_path}"',
-        f'anthropic_model = "{config.anthropic_model}"',
-        f'db_path = "{config.db_path}"',
+        f'vault_path = "{_toml_escape(config.vault_path)}"',
+        f'anthropic_model = "{_toml_escape(config.anthropic_model)}"',
+        f'db_path = "{_toml_escape(config.db_path)}"',
         f"default_count = {config.default_count}",
-        f'default_types = {config.default_types}',
-        f'default_difficulty = "{config.default_difficulty}"',
+        f"default_types = {_toml_list(config.default_types)}",
+        f'default_difficulty = "{_toml_escape(config.default_difficulty)}"',
         f"web_port = {config.web_port}",
     ]
     # Only write api key if explicitly set (not from env)
     if config.anthropic_api_key and "ANTHROPIC_API_KEY" not in os.environ:
-        lines.insert(1, f'anthropic_api_key = "{config.anthropic_api_key}"')
+        lines.insert(1, f'anthropic_api_key = "{_toml_escape(config.anthropic_api_key)}"')
 
     with open(CONFIG_FILE, "w") as f:
         f.write("\n".join(lines) + "\n")

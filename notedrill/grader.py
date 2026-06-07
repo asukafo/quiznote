@@ -129,7 +129,20 @@ def grade_answer(
 
     if question.type in ("multiple_choice", "true_false"):
         is_correct, feedback = _grade_auto(question, user_answer)
-    elif question.type in ("programming", "short_answer", "fill_blank"):
+    elif question.type == "fill_blank":
+        if ai_grader:
+            is_correct, feedback = ai_grader.grade(question, user_answer)
+        else:
+            # Fallback: case-insensitive substring match
+            correct_lower = question.correct_answer.strip().lower()
+            user_lower = user_answer.strip().lower()
+            if correct_lower in user_lower or user_lower in correct_lower:
+                is_correct = True
+                feedback = f"✓ 基本正确。{question.explanation}"
+            else:
+                is_correct = False
+                feedback = f"✗ 参考答案：{question.correct_answer}。{question.explanation}"
+    elif question.type in ("programming", "short_answer"):
         if ai_grader:
             is_correct, feedback = ai_grader.grade(question, user_answer)
         else:

@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .quiznote.db
+.notedrill.db
 notes/
 *.egg-info/
 .DS_Store
