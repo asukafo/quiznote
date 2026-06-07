@@ -66,7 +66,10 @@ def _get_ai_grader():
 
 def _render(template: str, request: Request, **kwargs) -> HTMLResponse:
     tmpl = jinja.get_template(template)
-    return HTMLResponse(tmpl.render(request=request, **kwargs))
+    return HTMLResponse(
+        tmpl.render(request=request, **kwargs),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+    )
 
 
 def _call_claude(prompt: str, schema: dict | None = None, budget: float = 1.0) -> dict:
