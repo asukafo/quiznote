@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Stats{% endblock %}
+{% block content %}
+
+<h1 style="margin-bottom:1.5rem;">📊 学习统计</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="value">{{ stats.total_quizzes }}</div>
+        <div class="label">总测验数</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ stats.total_questions_answered }}</div>
+        <div class="label">总答题数</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ stats.total_correct }}</div>
+        <div class="label">正确数</div>
+    </div>
+    <div class="stat-card">
+        <div class="value" style="color:{% if stats.overall_accuracy >= 0.8 %}#3fb950{% elif stats.overall_accuracy >= 0.6 %}#d2991d{% else %}#f85149{% endif %};">
+            {{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered > 0 else "-" }}{% if stats.total_questions_answered > 0 %}%{% endif %}
+        </div>
+        <div class="label">总正确率</div>
+    </div>
+</div>
+
+{% if stats.topics %}
+<div class="card">
+    <h2>按知识点统计</h2>
+    <table>
+        <tr>
+            <th>知识点</th>
+            <th>尝试次数</th>
+            <th>正确率</th>
+            <th>正确率图示</th>
+            <th>最近答题</th>
+        </tr>
+        {% for t in stats.topics %}
+        <tr>
+            <td style="font-weight:600;">{{ t.topic }}</td>
+            <td>{{ t.total_attempts }}</td>
+            <td>
+                <span style="color:{% if t.accuracy >= 0.8 %}#3fb950{% elif t.accuracy >= 0.6 %}#d2991d{% else %}#f85149{% endif %};font-weight:700;">
+                    {{ "%.0f" % (t.accuracy * 100) }}%
+                </span>
+            </td>
+            <td>
+                <div style="width:120px;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
+                    <div style="width:{{ t.accuracy * 100 }}%;height:100%;background:{% if t.accuracy >= 0.8 %}#3fb950{% elif t.accuracy >= 0.6 %}#d2991d{% else %}#f85149{% endif %};border-radius:3px;"></div>
+                </div>
+            </td>
+            <td style="font-size:0.85rem;color:var(--text-dim);">{{ t.last_attempted[:10] if t.last_attempted else "-" }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <div class="icon">📈</div>
+    <p>还没有统计数据</p>
+    <p style="font-size:0.9rem;">开始答题后，这里会显示你的学习进度</p>
+</div>
+{% endif %}
+
+{% endblock %}

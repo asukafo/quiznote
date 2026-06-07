@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Result{% endblock %}
+{% block content %}
+
+<div class="result-header">
+    <div style="font-size:0.9rem;color:var(--text-dim);margin-bottom:0.5rem;">{{ quiz.title }}</div>
+    <div class="result-score" style="color:{% if score >= 80 %}#3fb950{% elif score >= 60 %}#d2991d{% else %}#f85149{% endif %};">
+        {{ "%.0f" % score }}%
+    </div>
+    <div style="color:var(--text-dim);">
+        {{ answers|selectattr('is_correct','equalto',true)|list|length }} / {{ answers|length }} 正确
+    </div>
+    <div style="margin-top:1rem;">
+        <a href="/quiz/start" class="btn btn-primary">再测一次</a>
+        <a href="/" class="btn">返回首页</a>
+    </div>
+</div>
+
+<h2 style="margin-bottom:1rem;">📋 详细结果</h2>
+
+{% for ans in answers %}
+<div class="result-item {{ 'correct' if ans.is_correct else 'wrong' }}">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;">
+        <strong>
+            {{ "✅" if ans.is_correct else "❌" }}
+            Q{{ loop.index }}:
+            {{ ans.question_text[:120] }}{% if ans.question_text|length > 120 %}...{% endif %}
+        </strong>
+        <span class="badge badge-{{ ans.question_type }}" style="flex-shrink:0;margin-left:0.5rem;">{{ ans.question_type }}</span>
+    </div>
+
+    {% if ans.question_type in ("multiple_choice","true_false") %}
+    <div style="font-size:0.9rem;">
+        <span style="color:var(--text-dim)">你的答案:</span>
+        <span style="color:{% if ans.is_correct %}#3fb950{% else %}#f85149{% endif %};font-weight:600;">
+            {{ ans.user_answer }}
+        </span>
+        {% if not ans.is_correct %}
+        <span style="margin-left:0.5rem;color:var(--text-dim);">正确答案: <strong style="color:#3fb950;">{{ ans.correct_answer }}</strong></span>
+        {% endif %}
+    </div>
+    {% else %}
+    <details style="font-size:0.85rem;margin-top:0.5rem;">
+        <summary style="cursor:pointer;color:var(--text-dim);">查看作答详情</summary>
+        <div style="margin-top:0.5rem;padding:0.5rem;background:var(--bg);border-radius:4px;">
+            <div><strong>你的作答:</strong></div>
+            <pre style="white-space:pre-wrap;font-family:inherit;margin:0.25rem 0;">{{ ans.user_answer }}</pre>
+            <div><strong>参考答案:</strong></div>
+            <pre style="white-space:pre-wrap;font-family:inherit;margin:0.25rem 0;">{{ ans.correct_answer }}</pre>
+        </div>
+    </details>
+    {% endif %}
+
+    {% if ans.feedback %}
+    <div style="margin-top:0.5rem;font-size:0.9rem;color:{{ '#3fb950' if ans.is_correct else '#f85149' }};">
+        {{ ans.feedback }}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+{% endblock %}

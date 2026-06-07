@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Quiz{% endblock %}
+{% block content %}
+
+<div class="progress-bar">
+    <span style="font-size:0.85rem;color:var(--text-dim);">Q{{ current }}/{{ total }}</span>
+    <div class="track">
+        <div class="fill" style="width:{{ (current / total) * 100 }}%"></div>
+    </div>
+</div>
+
+<div class="question-box">
+    <div class="question-meta">
+        <span class="badge badge-{{ question.type }}">{{ question.type }}</span>
+        <span class="badge badge-{{ question.difficulty }}">{{ question.difficulty }}</span>
+        <span>{{ question.topic }}</span>
+    </div>
+
+    <div class="question-text">
+        {{ question.question | replace('\n', '<br>') | safe }}
+    </div>
+
+    {% if question.code_context %}
+    <div class="code-block">{{ question.code_context }}</div>
+    {% endif %}
+
+    <form action="/quiz/{{ quiz.id }}/answer" method="post">
+        {% if question.options %}
+        <div class="options">
+            {% for opt in question.options %}
+            <label class="option">
+                <input type="radio" name="answer" value="{{ opt.id }}" required>
+                <strong>{{ opt.id }})</strong> {{ opt.text }}
+            </label>
+            {% endfor %}
+        </div>
+        {% elif question.type == "true_false" %}
+        <div class="options">
+            <label class="option">
+                <input type="radio" name="answer" value="正确" required> ✅ 正确
+            </label>
+            <label class="option">
+                <input type="radio" name="answer" value="错误" required> ❌ 错误
+            </label>
+        </div>
+        {% else %}
+        <div class="form-group">
+            <textarea name="answer" placeholder="输入你的答案..." required></textarea>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary" style="margin-top:1rem;">
+            {% if current == total %}提交{% else %}下一题 →{% endif %}
+        </button>
+    </form>
+</div>
+
+{% endblock %}

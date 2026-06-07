@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Generate{% endblock %}
+{% block content %}
+
+<h1 style="margin-bottom:1.5rem;">🎯 生成题目</h1>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <form action="/generate" method="post">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="count">题目数量</label>
+                <input type="number" id="count" name="count" value="10" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label for="qtype">题目类型</label>
+                <select id="qtype" name="qtype">
+                    <option value="all">全部类型</option>
+                    <option value="mc">选择题</option>
+                    <option value="tf">判断题</option>
+                    <option value="code">编程题</option>
+                    <option value="short">简答题</option>
+                    <option value="fill">填空题</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="difficulty">难度</label>
+                <select id="difficulty" name="difficulty">
+                    <option value="mixed">混合</option>
+                    <option value="easy">简单</option>
+                    <option value="medium">中等</option>
+                    <option value="hard">困难</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="topic">主题（可选）</label>
+                <select id="topic" name="topic">
+                    <option value="">不限定</option>
+                    {% for t in topics %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">🤖 用 AI 生成题目</button>
+    </form>
+</div>
+
+{% if generated %}
+<div class="card">
+    <h2>✅ 生成了 {{ generated|length }} 道题目</h2>
+    <table>
+        <tr><th>类型</th><th>主题</th><th>难度</th><th>题目</th></tr>
+        {% for q in generated %}
+        <tr>
+            <td><span class="badge badge-{{ q.type }}">{{ q.type }}</span></td>
+            <td>{{ q.topic }}</td>
+            <td><span class="badge badge-{{ q.difficulty }}">{{ q.difficulty }}</span></td>
+            <td>{{ q.question[:100] }}{% if q.question|length > 100 %}...{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <br>
+    <a href="/quiz/start" class="btn btn-success">📝 开始答题</a>
+</div>
+{% endif %}
+
+{% endblock %}

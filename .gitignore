@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.quiznote.db
+notes/
+*.egg-info/
+.DS_Store

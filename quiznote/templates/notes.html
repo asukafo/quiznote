@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Notes{% endblock %}
+{% block content %}
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+    <h1>📖 笔记</h1>
+    <form action="/reparse" method="post">
+        <button class="btn btn-sm">🔄 重新解析</button>
+    </form>
+</div>
+
+{% if notes %}
+<table>
+    <tr><th>标题</th><th>路径</th><th>标签</th><th>链接</th></tr>
+    {% for n in notes %}
+    <tr>
+        <td style="font-weight:600;">{{ n.title }}</td>
+        <td style="color:var(--text-dim);font-size:0.85rem;">{{ n.path }}</td>
+        <td>
+            {% for t in n.tags[:5] %}
+            <span class="badge" style="background:var(--bg-hover);color:var(--text-dim);">{{ t }}</span>
+            {% endfor %}
+        </td>
+        <td style="font-size:0.85rem;">{{ n.links|length }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<div class="empty-state">
+    <div class="icon">📭</div>
+    <p>没有找到笔记</p>
+    <p style="font-size:0.9rem;">把你的 Obsidian .md 笔记放到 vault 目录，然后点击重新解析</p>
+</div>
+{% endif %}
+
+{% endblock %}

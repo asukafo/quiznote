@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Edit Question{% endblock %}
+{% block content %}
+
+<h1 style="margin-bottom:1rem;">✏️ 编辑题目</h1>
+
+<div class="card">
+    <form action="/question/{{ question.id }}/edit" method="post">
+        <div class="form-group">
+            <label>题目内容</label>
+            <textarea name="question" rows="4">{{ question.question }}</textarea>
+        </div>
+        {% if question.options %}
+        <div class="form-group">
+            <label>选项</label>
+            {% for opt in question.options %}
+            <div style="margin-bottom:0.3rem;">
+                <strong>{{ opt.id }})</strong>
+                <input type="text" value="{{ opt.text }}" readonly
+                       style="width:90%;background:var(--bg);border:1px solid var(--border);padding:0.3rem;">
+            </div>
+            {% endfor %}
+            <small style="color:var(--text-dim);">选项暂不支持在线修改，如需修改请用 CLI: quiznote question edit</small>
+        </div>
+        {% endif %}
+        {% if question.code_context %}
+        <div class="form-group">
+            <label>代码上下文</label>
+            <textarea readonly style="background:var(--bg);">{{ question.code_context }}</textarea>
+        </div>
+        {% endif %}
+        <div class="form-row">
+            <div class="form-group">
+                <label>正确答案</label>
+                <input type="text" name="correct_answer" value="{{ question.correct_answer }}">
+            </div>
+            <div class="form-group">
+                <label>难度</label>
+                <select name="difficulty">
+                    <option value="easy" {% if question.difficulty == 'easy' %}selected{% endif %}>简单</option>
+                    <option value="medium" {% if question.difficulty == 'medium' %}selected{% endif %}>中等</option>
+                    <option value="hard" {% if question.difficulty == 'hard' %}selected{% endif %}>困难</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>主题</label>
+            <input type="text" name="topic" value="{{ question.topic }}">
+        </div>
+        <div class="form-group">
+            <label>解释</label>
+            <textarea name="explanation" rows="3">{{ question.explanation }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">💾 保存修改</button>
+        <a href="/" class="btn">取消</a>
+    </form>
+</div>
+
+{% endblock %}

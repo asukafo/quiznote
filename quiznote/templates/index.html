@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Dashboard{% endblock %}
+{% block content %}
+
+<h1 style="margin-bottom:1.5rem;">Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="value">{{ notes_count }}</div>
+        <div class="label">笔记</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ questions_count }}</div>
+        <div class="label">题库</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ stats.total_quizzes }}</div>
+        <div class="label">测验</div>
+    </div>
+    <div class="stat-card">
+        <div class="value">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered > 0 else "-" }}{% if stats.total_questions_answered > 0 %}%{% endif %}</div>
+        <div class="label">正确率</div>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+    <div class="card">
+        <h2>快速操作</h2>
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <a href="/generate" class="btn btn-primary">🎯 生成新题目</a>
+            <a href="/quiz/start" class="btn">📝 开始答题</a>
+            <a href="/notes" class="btn">📖 浏览笔记</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>知识点</h2>
+        {% if topics %}
+            {% for t in topics %}
+            <span style="display:inline-block;margin:0.2rem;">
+                <span style="background:var(--bg-hover);padding:0.2em 0.6em;border-radius:20px;font-size:0.85rem;">{{ t }}</span>
+            </span>
+            {% endfor %}
+        {% else %}
+            <p class="empty-state" style="padding:1rem;">
+                <span style="font-size:1.5rem;">🧪</span><br>
+                还没有题目，先生成一些吧
+            </p>
+        {% endif %}
+    </div>
+</div>
+
+{% if quizzes %}
+<div class="card" style="margin-top:1rem;">
+    <h2>最近测验</h2>
+    <table>
+        <tr><th>标题</th><th>模式</th><th>得分</th><th>日期</th></tr>
+        {% for q in quizzes %}
+        <tr>
+            <td><a href="/quiz/{{ q.id }}/result">{{ q.title }}</a></td>
+            <td>{{ q.mode }}</td>
+            <td>
+                {% if q.score is not none %}
+                    <span style="color:{% if q.score >= 80 %}#3fb950{% elif q.score >= 60 %}#d2991d{% else %}#f85149{% endif %};font-weight:700;">{{ "%.0f" % q.score }}%</span>
+                {% else %}-{% endif %}
+            </td>
+            <td style="color:var(--text-dim);font-size:0.85rem;">{{ q.created_at[:10] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+{% endblock %}

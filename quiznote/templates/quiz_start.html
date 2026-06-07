@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Start Quiz{% endblock %}
+{% block content %}
+<div style="max-width:600px;margin:2rem auto;padding:0 1rem;">
+
+<h1 style="margin-bottom:1.5rem;">📝 开始答题</h1>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <form action="/quiz/start" method="post">
+        <div class="form-group">
+            <label for="mode">答题模式</label>
+            <select id="mode" name="mode">
+                <option value="random">🎲 随机抽题</option>
+                <option value="topic">📚 按主题</option>
+                <option value="weakest">🎯 薄弱环节</option>
+                <option value="exam">📋 模拟考试</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="topic">主题</label>
+                <select id="topic" name="topic">
+                    <option value="">不限定</option>
+                    {% for t in topics %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="count">题目数量</label>
+                <input type="number" id="count" name="count" value="10" min="1" max="50">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">开始答题</button>
+    </form>
+</div>
+
+{% if not topics %}
+<div class="alert alert-info">
+    还没有题目库。先去 <a href="/">首页</a> 生成题目吧！
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+[project]
+name = "quiznote"
+version = "0.1.0"
+description = "AI-powered quiz generator from Obsidian notes"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "jinja2>=3.1.0",
+    "python-frontmatter>=1.1.0",
+    "markdown>=3.7",
+    "pydantic>=2.0.0",
+    "pdfplumber>=0.11.0",
+]
+
+[project.scripts]
+quiznote = "quiznote.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

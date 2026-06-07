@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Generating...{% endblock %}
+{% block content %}
+
+<div style="max-width:500px;margin:4rem auto;text-align:center;">
+    <div style="font-size:3rem;margin-bottom:1rem;">🤖</div>
+    <h2>正在生成题目...</h2>
+    <p style="color:var(--text-dim);margin-bottom:1.5rem;">
+        Claude 正在根据你选中的笔记内容出题，预计需要 20-40 秒。
+    </p>
+
+    {% if headings %}
+    <div style="margin-bottom:2rem;">
+        <span style="font-size:0.8rem;color:var(--text-dim);">出题范围:</span>
+        {% for h in headings %}
+        <span class="badge" style="background:var(--bg-hover);color:var(--text-dim);">{{ h }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom:2rem;">
+        <div style="width:100%;height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden;">
+            <div class="progress-fill" style="width:10%;height:100%;background:var(--accent);border-radius:3px;animation:pulse 1.5s ease-in-out infinite;"></div>
+        </div>
+    </div>
+
+    <p id="status" style="font-size:0.85rem;color:var(--text-dim);">
+        ⏳ 正在调用 Claude Code 出题...
+    </p>
+    <p id="detail" style="font-size:0.75rem;color:var(--text-dim);margin-top:0.5rem;"></p>
+</div>
+
+<script>
+const taskId = "{{ task_id }}";
+let attempts = 0;
+const maxAttempts = 90;  // 3 min max (2s * 90)
+
+const statusMessages = {
+    "running": "⏳ 正在调用 Claude Code 出题",
+    "calling_claude": "🤖 Claude 正在根据笔记内容生成题目",
+    "saving": "💾 正在保存题目到数据库",
+    "done": "✅ 完成！",
+    "error": "❌ 出错了",
+};
+
+function poll() {
+    attempts++;
+    fetch("/generate/status/" + taskId)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === "done") {
+                document.getElementById("status").textContent = "✅ 完成！正在跳转...";
+                window.location.href = "/?show_generated=" + taskId;
+            } else if (data.status === "error") {
+                document.getElementById("status").innerHTML =
+                    '<span style="color:var(--red);">❌ 出错了: ' + (data.error || 'unknown') + '</span>';
+                if (data.traceback) {
+                    document.getElementById("detail").innerHTML =
+                        '<pre style="text-align:left;font-size:0.7rem;max-height:200px;overflow:auto;">' +
+                        data.traceback.substring(0, 500) + '</pre>';
+                }
+            } else if (attempts >= maxAttempts) {
+                document.getElementById("status").innerHTML =
+                    '<span style="color:var(--red);">⏰ 超时了</span> <a href="/">返回重试</a>';
+            } else {
+                document.getElementById("status").textContent =
+                    (statusMessages[data.status] || "⏳ 处理中") + ".".repeat(attempts % 4 + 1);
+                document.getElementById("detail").textContent =
+                    "已等待 " + (attempts * 2) + " 秒";
+                setTimeout(poll, 2000);
+            }
+        })
+        .catch(() => {
+            document.getElementById("status").textContent =
+                "正在连接服务器..." + ".".repeat(attempts % 4 + 1);
+            if (attempts < maxAttempts) setTimeout(poll, 3000);
+        });
+}
+
+setTimeout(poll, 2000);
+</script>
+
+<style>
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+.progress-fill {
+    animation: progress 20s ease-in-out forwards;
+}
+@keyframes progress {
+    0% { width: 5%; }
+    50% { width: 60%; }
+    100% { width: 95%; }
+}
+</style>
+
+{% endblock %}
