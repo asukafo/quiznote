@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — Review Done{% endblock %}
+{% block content %}
+<div class="app-layout">
+    <aside class="sidebar" style="padding:1rem;">
+        <a href="/" style="color:var(--accent);text-decoration:none;font-weight:700;">📁 笔记库</a>
+        <a href="/dashboard" style="display:block;margin-top:1rem;color:var(--text-dim);text-decoration:none;">📊 仪表盘</a>
+    </aside>
+    <main class="content">
+        <div style="max-width:500px;margin:4rem auto;text-align:center;">
+            <div style="font-size:3rem;margin-bottom:1rem;">🔄</div>
+            <h1>复习完成！</h1>
+            <div class="result-score" style="font-size:3rem;font-weight:800;color:{% if score >= 80 %}#3fb950{% elif score >= 60 %}#d2991d{% else %}#f85149{% endif %};">{{ "%.0f" % score }}%</div>
+            <p style="color:var(--text-dim);">{{ correct }}/{{ total }} 正确</p>
+
+            <div class="stats-grid" style="margin:1.5rem 0;">
+                <div class="stat-card"><div class="value" style="color:var(--accent);">{{ srs_stats.total }}</div><div class="label">SRS卡片</div></div>
+                <div class="stat-card"><div class="value" style="color:var(--green);">{{ srs_stats.mature }}</div><div class="label">已掌握</div></div>
+                <div class="stat-card"><div class="value">{{ srs_stats.due }}</div><div class="label">待复习</div></div>
+                <div class="stat-card"><div class="value">{{ srs_stats.reviewed_today }}</div><div class="label">今日复习</div></div>
+            </div>
+
+            <div style="display:flex;gap:0.5rem;justify-content:center;">
+                <a href="/review" class="btn btn-primary">继续复习</a>
+                <a href="/dashboard" class="btn">📊 仪表盘</a>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

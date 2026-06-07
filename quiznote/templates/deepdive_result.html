@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — 深挖总结{% endblock %}
+{% block content %}
+<div class="app-layout">
+    <aside class="sidebar" style="padding:1rem;">
+        <a href="/" style="color:var(--accent);text-decoration:none;font-weight:700;">📁 笔记库</a>
+        <a href="/dashboard" style="display:block;margin-top:1rem;color:var(--text-dim);text-decoration:none;">📊 仪表盘</a>
+    </aside>
+    <main class="content">
+        <div style="max-width:700px;margin:0 auto;">
+            <h1>🔬 深挖总结 — {{ topic }}</h1>
+
+            <!-- Overall -->
+            <div class="card" style="margin-bottom:1.5rem;">
+                <h2>📝 总体评价</h2>
+                <p>{{ review.overall_feedback }}</p>
+            </div>
+
+            <!-- Mastered -->
+            <div class="card" style="margin-bottom:1rem;border-left:4px solid var(--green);">
+                <h2>✅ 已掌握</h2>
+                {% for m in review.mastered %}
+                <span class="badge" style="background:rgba(63,185,80,0.15);color:var(--green);margin:0.15rem;">{{ m }}</span>
+                {% endfor %}
+            </div>
+
+            <!-- Gaps -->
+            <div class="card" style="margin-bottom:1rem;border-left:4px solid var(--red);">
+                <h2>❌ 需要加强</h2>
+                {% for g in review.gaps %}
+                <span class="badge" style="background:rgba(248,81,73,0.15);color:var(--red);margin:0.15rem;">{{ g }}</span>
+                {% endfor %}
+            </div>
+
+            <!-- Suggestions -->
+            <div class="card" style="margin-bottom:1.5rem;border-left:4px solid var(--accent);">
+                <h2>💡 学习建议</h2>
+                {% for s in review.suggestions %}
+                <p style="margin-bottom:0.3rem;">• {{ s }}</p>
+                {% endfor %}
+            </div>
+
+            <!-- Full history -->
+            <details style="cursor:pointer;">
+                <summary style="color:var(--text-dim);">查看完整对话</summary>
+                {% for h in history %}
+                <div style="padding:0.5rem;margin:0.3rem 0;background:var(--bg-card);border-radius:var(--radius);font-size:0.85rem;">
+                    <strong>Q{{ h.depth }}:</strong> {{ h.question }}<br>
+                    <span style="color:var(--text-dim);">A: {{ h.answer or '(未答)' }}</span>
+                </div>
+                {% endfor %}
+            </details>
+
+            <div style="margin-top:1.5rem;">
+                <a href="/" class="btn btn-primary">返回笔记库</a>
+                <a href="/dashboard" class="btn">📊 仪表盘</a>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}

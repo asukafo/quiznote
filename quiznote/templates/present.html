@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — 讲述模式{% endblock %}
+{% block content %}
+<div class="app-layout">
+    <aside class="sidebar" style="padding:1rem;">
+        <a href="/" style="color:var(--accent);text-decoration:none;font-weight:700;">📁 笔记库</a>
+        <a href="/dashboard" style="display:block;margin-top:1rem;color:var(--text-dim);text-decoration:none;">📊 仪表盘</a>
+    </aside>
+    <main class="content">
+        <div style="max-width:750px;margin:0 auto;">
+            <h1>🎤 讲述模式</h1>
+            <p style="color:var(--text-dim);margin-bottom:1.5rem;">{{ title }}</p>
+
+            <form action="/present/{{ session_id }}/review" method="post">
+                {% for sec in sections %}
+                <div class="card" style="margin-bottom:1.5rem;">
+                    <h3>{{ sec.heading }}</h3>
+                    <p style="color:var(--accent);font-size:0.9rem;margin-bottom:1rem;">💡 {{ sec.prompt }}</p>
+
+                    {% if sec.key_points %}
+                    <div style="margin-bottom:0.75rem;">
+                        <span style="font-size:0.8rem;color:var(--text-dim);">回忆要点：</span>
+                        {% for kp in sec.key_points %}
+                        <span class="badge" style="background:var(--bg-hover);color:var(--text-dim);margin:0.15rem;">{{ kp }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <textarea name="answer_{{ loop.index0 }}" rows="6"
+                              placeholder="在这里写下你对这部分知识的理解和回忆..."
+                              style="width:100%;background:var(--bg);color:var(--text);
+                                     border:1px solid var(--border);border-radius:var(--radius);
+                                     padding:0.75rem;font-family:inherit;font-size:0.9rem;resize:vertical;"></textarea>
+                </div>
+                {% endfor %}
+
+                <button type="submit" class="btn btn-primary" style="width:100%;padding:0.75rem;font-size:1rem;">
+                    ✅ 提交评审
+                </button>
+            </form>
+        </div>
+    </main>
+</div>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — SRS Review{% endblock %}
+{% block content %}
+<div class="app-layout">
+    <aside class="sidebar" style="padding:1rem;">
+        <a href="/dashboard" style="color:var(--accent);text-decoration:none;font-weight:700;">📊 仪表盘</a>
+        <div style="margin-top:1rem;font-size:0.8rem;color:var(--text-dim);">{{ srs_info }}</div>
+    </aside>
+    <main class="content">
+        <div style="max-width:650px;margin:0 auto;">
+            <div class="progress-bar" style="margin-bottom:1rem;">
+                <span style="font-size:0.8rem;color:var(--text-dim);">{{ current }}/{{ total }}</span>
+                <div class="track" style="flex:1;height:6px;background:var(--bg-hover);border-radius:3px;margin:0 0.5rem;">
+                    <div class="fill" style="width:{{ current/total*100 }}%;height:100%;background:var(--green);border-radius:3px;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex;gap:0.3rem;margin-bottom:0.75rem;">
+                    <span class="badge badge-{{ question.type }}">{{ question.type }}</span>
+                    <span class="badge badge-{{ question.difficulty }}">{{ question.difficulty }}</span>
+                    <span class="badge" style="background:var(--bg-hover);">{{ question.topic }}</span>
+                </div>
+                <div style="font-size:1.05rem;line-height:1.6;margin-bottom:1rem;">{{ question.question }}</div>
+                {% if question.code_context %}<pre class="q-code">{{ question.code_context }}</pre>{% endif %}
+                {% if question.options %}
+                <div style="margin-bottom:1rem;">
+                    {% for opt in question.options %}
+                    <div style="padding:0.3rem 0;">{{ opt.id }}) {{ opt.text }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <form action="/review/{{ quiz.id }}/answer" method="post">
+                {% if question.type == "multiple_choice" and question.options %}
+                <div style="margin-bottom:1rem;">
+                    {% for opt in question.options %}
+                    <label class="option" style="display:block;padding:0.5rem;margin-bottom:0.3rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;">
+                        <input type="radio" name="answer" value="{{ opt.id }}" required> {{ opt.id }}) {{ opt.text }}
+                    </label>
+                    {% endfor %}
+                </div>
+                {% elif question.type == "true_false" %}
+                <div style="margin-bottom:1rem;">
+                    <label class="option" style="display:block;padding:0.5rem;margin-bottom:0.3rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;">
+                        <input type="radio" name="answer" value="正确" required> ✅ 正确
+                    </label>
+                    <label class="option" style="display:block;padding:0.5rem;margin-bottom:0.3rem;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;">
+                        <input type="radio" name="answer" value="错误" required> ❌ 错误
+                    </label>
+                </div>
+                {% else %}
+                <textarea name="answer" rows="4" placeholder="输入你的答案..."
+                          style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);
+                                 border-radius:var(--radius);padding:0.75rem;font-family:inherit;margin-bottom:1rem;"></textarea>
+                {% endif %}
+
+                <div style="margin-bottom:1rem;">
+                    <span style="font-size:0.85rem;color:var(--text-dim);">自信度：</span>
+                    <select name="confidence" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:0.3rem;">
+                        <option value="high">很确定</option>
+                        <option value="medium" selected>一般</option>
+                        <option value="low">不确定</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width:100%;">
+                    {% if current == total %}提交{% else %}下一题 →{% endif %}
+                </button>
+            </form>
+        </div>
+    </main>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}QuizNote — 讲述结果{% endblock %}
+{% block content %}
+<div class="app-layout">
+    <aside class="sidebar" style="padding:1rem;">
+        <a href="/" style="color:var(--accent);text-decoration:none;font-weight:700;">📁 笔记库</a>
+        <a href="/dashboard" style="display:block;margin-top:1rem;color:var(--text-dim);text-decoration:none;">📊 仪表盘</a>
+    </aside>
+    <main class="content">
+        <div style="max-width:750px;margin:0 auto;">
+            <div class="result-header" style="text-align:center;padding:2rem;background:var(--bg-card);border-radius:var(--radius);margin-bottom:1.5rem;">
+                <h1>{{ title }}</h1>
+                <div class="result-score" style="font-size:3rem;font-weight:800;color:{% if review.overall_score >= 80 %}#3fb950{% elif review.overall_score >= 60 %}#d2991d{% else %}#f85149{% endif %};">{{ review.overall_score }}分</div>
+                <p style="margin-top:0.5rem;">{{ review.overall_feedback }}</p>
+            </div>
+
+            {% for r in review.results %}
+            <div class="card" style="margin-bottom:1rem;border-left:4px solid {% if r.score >= 80 %}#3fb950{% elif r.score >= 60 %}#d2991d{% else %}#f85149{% endif %};">
+                <h3>{{ r.heading }}</h3>
+                <div style="color:var(--text-dim);margin-bottom:0.5rem;">得分: {{ r.score }}</div>
+                <p>{{ r.feedback }}</p>
+
+                {% if r.correct %}
+                <div style="margin-top:0.5rem;">
+                    <span style="color:var(--green);">✅ 正确：</span>
+                    {% for c in r.correct %}<span class="badge" style="background:rgba(63,185,80,0.15);color:var(--green);margin:0.1rem;">{{ c }}</span>{% endfor %}
+                </div>
+                {% endif %}
+                {% if r.missing %}
+                <div style="margin-top:0.3rem;">
+                    <span style="color:var(--red);">❌ 遗漏：</span>
+                    {% for m in r.missing %}<span class="badge" style="background:rgba(248,81,73,0.15);color:var(--red);margin:0.1rem;">{{ m }}</span>{% endfor %}
+                </div>
+                {% endif %}
+                {% if r.suggestion %}
+                <p style="margin-top:0.5rem;font-size:0.85rem;color:var(--accent);">💡 {{ r.suggestion }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <a href="/" class="btn">返回笔记库</a>
+            <a href="/dashboard" class="btn">📊 仪表盘</a>
+        </div>
+    </main>
+</div>
+{% endblock %}

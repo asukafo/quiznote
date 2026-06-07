@@ -109,6 +109,27 @@ class Storage:
                 correct_count   INTEGER NOT NULL DEFAULT 0,
                 last_attempted  TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS srs_items (
+                question_id     TEXT PRIMARY KEY,
+                repetitions     INTEGER NOT NULL DEFAULT 0,
+                ease_factor     REAL NOT NULL DEFAULT 2.5,
+                interval_days   REAL NOT NULL DEFAULT 0.0,
+                next_review_at  TEXT NOT NULL DEFAULT '',
+                last_review_at  TEXT,
+                lapses          INTEGER NOT NULL DEFAULT 0,
+                total_reviews   INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS learning_sessions (
+                id              TEXT PRIMARY KEY,
+                mode            TEXT NOT NULL DEFAULT 'quiz',  -- quiz, present, deepdive
+                file_paths_json TEXT NOT NULL DEFAULT '[]',
+                notes_json      TEXT NOT NULL DEFAULT '{}',    -- session notes/results
+                created_at      TEXT NOT NULL DEFAULT '',
+                completed_at    TEXT
+            );
         """)
         self.conn.commit()
 
@@ -517,3 +538,109 @@ class Storage:
             (limit,),
         ).fetchall()
         return [r["topic"] for r in rows]
+
+    # ------------------------------------------------------------------
+    # SRS (Spaced Repetition)
+    # ------------------------------------------------------------------
+
+    def get_srs_item(self, question_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM srs_items WHERE question_id = ?", (question_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+    def upsert_srs(self, question_id: str, repetitions: int, ease_factor: float,
+                   interval_days: float, next_review_at: str, is_lapse: bool = False) -> None:
+        existing = self.get_srs_item(question_id)
+        if existing:
+            self.conn.execute(
+                """UPDATE srs_items SET repetitions=?, ease_factor=?, interval_days=?,
+                   next_review_at=?, last_review_at=datetime('now'),
+                   lapses=lapses + ?, total_reviews=total_reviews+1
+                   WHERE question_id=?""",
+                (repetitions, ease_factor, interval_days, next_review_at,
+                 1 if is_lapse else 0, question_id),
+            )
+        else:
+            self.conn.execute(
+                """INSERT INTO srs_items (question_id, repetitions, ease_factor,
+                   interval_days, next_review_at, last_review_at, total_reviews)
+                   VALUES (?, ?, ?, ?, ?, datetime('now'), 1)""",
+                (question_id, repetitions, ease_factor, interval_days, next_review_at),
+            )
+        self.conn.commit()
+
+    def get_due_srs_questions(self, limit: int = 20) -> list[str]:
+        """Return question IDs due for review."""
+        rows = self.conn.execute(
+            """SELECT question_id FROM srs_items
+               WHERE next_review_at <= datetime('now') OR next_review_at = ''
+               ORDER BY next_review_at ASC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [r["question_id"] for r in rows]
+
+    def get_srs_stats(self) -> dict:
+        """Return SRS statistics."""
+        total = self.conn.execute("SELECT COUNT(*) FROM srs_items").fetchone()[0]
+        due = self.conn.execute(
+            "SELECT COUNT(*) FROM srs_items WHERE next_review_at <= datetime('now') OR next_review_at = ''"
+        ).fetchone()[0]
+        mature = self.conn.execute(
+            "SELECT COUNT(*) FROM srs_items WHERE interval_days >= 21"
+        ).fetchone()[0]
+        # Reviews completed today
+        today = self.conn.execute(
+            "SELECT COUNT(*) FROM srs_items WHERE date(last_review_at) = date('now')"
+        ).fetchone()[0]
+        return {
+            "total": total,
+            "due": due,
+            "mature": mature,
+            "reviewed_today": today,
+        }
+
+    def get_review_history(self, days: int = 30) -> list[dict]:
+        """Return review count per day for heatmap."""
+        rows = self.conn.execute(
+            """SELECT date(last_review_at) as day, COUNT(*) as count
+               FROM srs_items
+               WHERE last_review_at >= date('now', ?)
+               GROUP BY day ORDER BY day""",
+            (f"-{days} days",),
+        ).fetchall()
+        return [{"day": r["day"], "count": r["count"]} for r in rows]
+
+    # ------------------------------------------------------------------
+    # Learning Sessions
+    # ------------------------------------------------------------------
+
+    def save_session(self, session_id: str, mode: str, file_paths: list[str],
+                     notes: dict | None = None) -> None:
+        import json
+        self.conn.execute(
+            """INSERT OR REPLACE INTO learning_sessions (id, mode, file_paths_json, notes_json, created_at)
+               VALUES (?, ?, ?, ?, datetime('now'))""",
+            (session_id, mode, json.dumps(file_paths), json.dumps(notes or {})),
+        )
+        self.conn.commit()
+
+    def complete_session(self, session_id: str) -> None:
+        self.conn.execute(
+            "UPDATE learning_sessions SET completed_at = datetime('now') WHERE id = ?",
+            (session_id,),
+        )
+        self.conn.commit()
+
+    def get_sessions(self, limit: int = 20) -> list[dict]:
+        import json
+        rows = self.conn.execute(
+            "SELECT * FROM learning_sessions ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [
+            {**dict(r), "file_paths": json.loads(r["file_paths_json"]),
+             "notes": json.loads(r["notes_json"])}
+            for r in rows
+        ]

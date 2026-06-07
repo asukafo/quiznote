@@ -13,9 +13,12 @@
             <span class="sidebar-meta">{{ total_files }} files</span>
         </div>
 
-        <div class="sidebar-actions">
-            <a href="#" onclick="selectAll()" class="action-link">全选</a>
-            <a href="#" onclick="deselectAll()" class="action-link">取消</a>
+        <div class="sidebar-actions" style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <a href="#" onclick="selectAll()" class="action-link">全选</a>
+                <a href="#" onclick="deselectAll()" class="action-link">取消</a>
+            </div>
+            <a href="/dashboard" class="action-link" style="font-weight:600;">📊</a>
         </div>
 
         <form id="generateForm" action="/generate" method="post">
@@ -55,20 +58,31 @@
                 {% endfor %}
             </div>
 
-            <!-- Generation controls (fixed at bottom of sidebar) -->
+            <!-- Generation controls -->
             <div class="generate-bar">
                 {% if error %}
                 <div class="flash-error">{{ error }}</div>
                 {% endif %}
-                <div class="generate-row">
+
+                <!-- Mode selector -->
+                <div style="margin-bottom:0.5rem;">
+                    <label style="font-size:0.75rem;color:var(--text-dim);">学习模式</label>
+                    <select name="mode" class="gen-select" style="width:100%;">
+                        <option value="quiz">📝 测验模式</option>
+                        <option value="present">🎤 讲述模式</option>
+                        <option value="deepdive">🔬 刨根问底</option>
+                    </select>
+                </div>
+
+                <div class="generate-row" id="quizOptions">
                     <select name="count" class="gen-select">
-                        <option value="5">5</option>
-                        <option value="10" selected>10</option>
-                        <option value="20">20</option>
+                        <option value="5">5题</option>
+                        <option value="10" selected>10题</option>
+                        <option value="20">20题</option>
                     </select>
                     <select name="qtype" class="gen-select">
                         <option value="all">全部</option>
-                        <option value="mc">选择题</option>
+                        <option value="mc">选择</option>
                         <option value="tf">判断</option>
                         <option value="code">编程</option>
                         <option value="short">简答</option>
@@ -80,9 +94,7 @@
                         <option value="hard">困难</option>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-primary gen-btn">
-                    🤖 生成题目
-                </button>
+                <button type="submit" class="btn btn-primary gen-btn">🚀 开始学习</button>
             </div>
         </form>
     </aside>
