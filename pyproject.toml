@@ -1,7 +1,7 @@
 [project]
-name = "quiznote"
-version = "0.1.0"
-description = "AI-powered quiz generator from Obsidian notes"
+name = "notedrill"
+version = "0.4.0"
+description = "Turn your Obsidian notes into a personal learning drill ground"
 requires-python = ">=3.12"
 dependencies = [
     "typer>=0.12.0",
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-quiznote = "quiznote.cli:app"
+notedrill = "notedrill.cli:app"
 
 [build-system]
 requires = ["hatchling"]
