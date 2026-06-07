@@ -13,12 +13,19 @@
             <span class="sidebar-meta">{{ total_files }} files</span>
         </div>
 
-        <div class="sidebar-actions" style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="sidebar-actions">
             <div>
                 <a href="#" onclick="selectAll()" class="action-link">全选</a>
                 <a href="#" onclick="deselectAll()" class="action-link">取消</a>
             </div>
             <a href="/dashboard" class="action-link" style="font-weight:600;">📊</a>
+        </div>
+        <div class="sidebar-nav">
+            <a href="/" class="nav-pill accent">📁 笔记</a>
+            <a href="/dashboard" class="nav-pill">📊 仪表盘</a>
+            {% if srs_stats.due > 0 %}
+            <a href="/review" class="nav-pill"><span class="badge-dot accent"></span>{{ srs_stats.due }} 待复习</a>
+            {% endif %}
         </div>
 
         <form id="generateForm" action="/generate" method="post">
@@ -147,21 +154,20 @@
         {% else %}
             <div class="content-empty">
                 {% if total_questions > 0 %}
-                <div class="welcome-stats">
-                    <div class="wstat"><span class="wstat-num">{{ total_files }}</span><span class="wstat-label">笔记文件</span></div>
-                    <div class="wstat"><span class="wstat-num">{{ total_questions }}</span><span class="wstat-label">题库</span></div>
-                    <div class="wstat"><span class="wstat-num">{{ stats.total_quizzes }}</span><span class="wstat-label">测验</span></div>
-                    <div class="wstat">
-                        <span class="wstat-num">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered > 0 else "-" }}{% if stats.total_questions_answered > 0 %}%{% endif %}</span>
-                        <span class="wstat-label">正确率</span>
+                <div class="hero-stats">
+                    <div class="hero-stat"><span class="hero-stat-num">{{ total_files }}</span><span class="hero-stat-label">笔记文件</span></div>
+                    <div class="hero-stat accent"><span class="hero-stat-num">{{ total_questions }}</span><span class="hero-stat-label">题库</span></div>
+                    <div class="hero-stat"><span class="hero-stat-num">{{ stats.total_quizzes }}</span><span class="hero-stat-label">测验</span></div>
+                    <div class="hero-stat green">
+                        <span class="hero-stat-num">{{ "%.0f" % (stats.overall_accuracy * 100) if stats.total_questions_answered > 0 else "-" }}{% if stats.total_questions_answered > 0 %}%{% endif %}</span>
+                        <span class="hero-stat-label">正确率</span>
                     </div>
                 </div>
                 {% endif %}
-                <div class="welcome-hint">
-                    <p>👈 在左侧文件树中勾选笔记（或整个目录），然后点击「生成题目」</p>
-                    <p style="font-size:0.8rem;color:var(--text-dim);">
-                        最小粒度为一个 .md 文件，最大可以选择整个目录
-                    </p>
+                <div class="welcome-card">
+                    <div class="icon">👈</div>
+                    <p style="font-weight:600;margin-bottom:0.4rem;">选择笔记，开始学习</p>
+                    <p style="font-size:0.82rem;color:var(--text-dim);">勾选文件或整个目录，选择学习模式，点击开始</p>
                 </div>
                 <div style="margin-top:1.5rem;display:flex;gap:0.5rem;">
                     <a href="/quiz/start" class="btn">📝 答题</a>
