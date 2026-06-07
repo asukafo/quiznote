@@ -1,4 +1,4 @@
-"""CLI entry point for QuizNote — the AI-powered quiz generator."""
+"""CLI entry point for NoteDrill — turn your notes into a learning drill ground."""
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ from .grader import grade_answer, compute_score, AIGrader
 from .models import QuestionType
 
 app = typer.Typer(
-    name="quiznote",
-    help="AI-powered quiz generator from your Obsidian notes.",
+    name="notedrill",
+    help="Turn your Obsidian notes into a personal learning drill ground.",
     no_args_is_help=True,
 )
 
@@ -68,7 +68,7 @@ def init(
         "notes", "--vault", "-v", help="Path to your Obsidian vault (or notes directory)"
     ),
 ):
-    """Initialize QuizNote with vault path. Uses Claude Code CLI for AI features."""
+    """Initialize NoteDrill with vault path. Uses Claude Code CLI for AI features."""
     cfg = Config()
 
     # Resolve vault path
@@ -606,6 +606,124 @@ def question_show(
         + f"Source: {q.source_note} | ID: {q.id}",
         title="Question Detail"
     ))
+
+
+# ---------------------------------------------------------------------------
+# tree — show vault hierarchy
+# ---------------------------------------------------------------------------
+
+@app.command()
+def tree(
+    path: Optional[str] = typer.Argument(None, help="Show subtree starting from a specific path"),
+):
+    """Show the vault directory tree with note titles."""
+    from .parser import list_vault_tree, _read_title
+
+    cfg = get_config()
+    vault = cfg.vault_path
+    tree_data = list_vault_tree(vault)
+
+    def _print_node(node: dict, indent: int = 0, prefix: str = ""):
+        is_last = False  # simplified
+        connector = "├── " if indent > 0 else ""
+        if node["type"] == "directory":
+            console.print(f"{'  ' * indent}{connector}📁 [bold cyan]{node['name']}[/bold cyan]")
+            for i, child in enumerate(node.get("children", [])):
+                _print_node(child, indent + 1)
+        else:
+            title = node.get("title", node["name"])
+            console.print(f"{'  ' * indent}{connector}📄 [dim]{title}[/dim] [dim italic]({node['path']})[/dim italic]")
+
+    console.print(f"[bold]📁 {tree_data['name']}[/bold]")
+    for child in tree_data.get("children", []):
+        _print_node(child, 0)
+
+
+# ---------------------------------------------------------------------------
+# pregenerate — bulk generate questions and save to vault
+# ---------------------------------------------------------------------------
+
+@app.command()
+def pregenerate(
+    count: int = typer.Option(10, "--count", "-n", help="Questions per batch"),
+    qtype: str = typer.Option("all", "--type", "-t", help="mc, tf, code, short, fill, all"),
+    difficulty: str = typer.Option("mixed", "--difficulty", "-d", help="easy, medium, hard, mixed"),
+    topic: Optional[str] = typer.Option(None, "--topic", help="Topic filter"),
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="Only generate from this file or directory"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be generated without actually doing it"),
+):
+    """Pre-generate questions from all notes and save to vault DB.
+
+    This scans the entire vault (or a subset via --path) and generates
+    questions for every markdown file, saving them into the .notedrill.db.
+    """
+    cfg = get_config()
+    storage = get_storage()
+
+    # Parse
+    console.print("[dim]Parsing vault...[/dim]")
+    notes = parse_vault(cfg.vault_path)
+    for note in notes:
+        storage.save_note(note)
+
+    # Filter by path
+    if path:
+        notes = [n for n in notes if n.path.startswith(path) or path in n.path]
+        if not notes:
+            console.print(f"[red]No notes found matching path: {path}[/red]")
+            raise typer.Exit(1)
+
+    console.print(f"Found [bold]{len(notes)}[/bold] notes to generate questions for.")
+    console.print(f"Settings: {count} questions/batch, {qtype}, {difficulty}")
+
+    # Map types
+    type_map = {"mc": "multiple_choice", "tf": "true_false", "code": "programming",
+                "short": "short_answer", "fill": "fill_blank"}
+    if qtype == "all":
+        question_types: list[QuestionType] = [
+            "multiple_choice", "true_false", "programming", "short_answer", "fill_blank"
+        ]
+    else:
+        question_types = [type_map.get(t.strip(), "multiple_choice") for t in qtype.split(",")]  # type: ignore
+
+    if dry_run:
+        for note in notes:
+            console.print(f"  [dim]Would generate {count} questions from: {note.title} ({note.path})[/dim]")
+        console.print(f"[yellow]Dry run — {len(notes)} notes, ~{len(notes) * count} questions would be generated.[/yellow]")
+        raise typer.Exit(0)
+
+    try:
+        generator = get_generator()
+    except typer.Exit:
+        raise
+
+    # Process in batches of 5 notes
+    total_questions = 0
+    batch_size = 5
+    for i in range(0, len(notes), batch_size):
+        batch = notes[i:i + batch_size]
+        batch_count = max(1, count * len(batch) // len(notes)) if len(notes) > 5 else count
+
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task(
+                f"Generating from {len(batch)} notes ({i+1}-{min(i+batch_size, len(notes))}/{len(notes)})...",
+                total=None
+            )
+            try:
+                questions = generator.generate(
+                    batch, count=batch_count,
+                    question_types=question_types, difficulty=difficulty, topic=topic
+                )
+            except Exception as e:
+                console.print(f"[red]Error on batch {i}: {e}[/red]")
+                continue
+
+        storage.save_questions(questions)
+        total_questions += len(questions)
+        for note in batch:
+            console.print(f"  [green]✓[/green] {note.title}: {len(questions)} questions")
+
+    console.print(f"\n[green]✓[/green] Total: [bold]{total_questions}[/bold] questions saved to vault DB.")
 
 
 # ---------------------------------------------------------------------------

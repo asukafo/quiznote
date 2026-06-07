@@ -32,7 +32,7 @@ class Config(BaseModel):
         """Return the actual DB path. If db_path is empty, put it in the vault."""
         if self.db_path:
             return self.db_path
-        return str(Path(self.vault_path) / ".quiznote.db")
+        return str(Path(self.vault_path) / ".notedrill.db")
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
