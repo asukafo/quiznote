@@ -235,9 +235,11 @@ def _setup_routes(app: FastAPI):
     async def generate_status(task_id: str):
         task = _generation_tasks.get(task_id)
         if task is None:
-            return JSONResponse({"status": "not_found"})
-        return JSONResponse({"status": task["status"], "count": len(task.get("questions", [])),
-                             "error": task.get("error"), "traceback": task.get("traceback", "")})
+            return JSONResponse({"status": "not_found", "count": 0, "error": "", "traceback": ""})
+        questions = task.get("questions")
+        count = len(questions) if questions else 0
+        return JSONResponse({"status": task["status"], "count": count,
+                             "error": task.get("error", ""), "traceback": task.get("traceback", "")})
 
     # ==================================================================
     # PRESENT MODE
