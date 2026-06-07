@@ -21,7 +21,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from .config import load_config
 from .storage import Storage
 from .parser import parse_vault, list_vault_tree, count_md_files, parse_note_file
-from .generator import QuestionGenerator
+from .generator import QuestionGenerator, QuestionCritic, sections_to_text
 from .quiz import create_quiz, QuizSession
 from .grader import grade_answer, compute_score, AIGrader
 from .srs import sm2_quality, sm2_update, mastery_level
@@ -108,6 +108,8 @@ def _run_generation(task_id: str, file_paths: list[str], count: int,
         _generation_tasks[task_id]["status"] = "calling_claude"
         gen = QuestionGenerator()
         all_questions = []
+        # Accumulate sections for critic context
+        all_sections: list[dict] = []
         for i in range(0, len(file_paths), 3):
             batch = file_paths[i:i + 3]
             notes = []
@@ -115,6 +117,12 @@ def _run_generation(task_id: str, file_paths: list[str], count: int,
                 try:
                     note = parse_note_file(str(Path(vault_path) / fp), vault_path)
                     notes.append(note)
+                    for s in note.sections:
+                        all_sections.append({
+                            "id": s.id, "note_path": note.path,
+                            "heading": s.heading, "level": s.level,
+                            "content": s.content, "code_blocks": s.code_blocks,
+                        })
                 except Exception:
                     continue
             if not notes:
@@ -123,11 +131,24 @@ def _run_generation(task_id: str, file_paths: list[str], count: int,
             all_questions.extend(
                 gen.generate(notes, count=batch_count, question_types=question_types, difficulty=difficulty)
             )
+
+        # ── Critic review step ──
+        critic_summary = None
+        if all_questions:
+            _generation_tasks[task_id]["status"] = "critic_review"
+            try:
+                sections_text = sections_to_text(all_sections)
+                critic = QuestionCritic()
+                all_questions, critic_summary = critic.review(all_questions, sections_text)
+            except Exception:
+                pass  # Fail open — keep all questions
+
         _generation_tasks[task_id]["status"] = "saving"
         _, storage = _get_cfg_storage()
         storage.save_questions(all_questions)
         _generation_tasks[task_id]["status"] = "done"
         _generation_tasks[task_id]["questions"] = all_questions
+        _generation_tasks[task_id]["critic_summary"] = critic_summary
     except Exception as e:
         _generation_tasks[task_id]["status"] = "error"
         _generation_tasks[task_id]["error"] = str(e)
@@ -238,11 +259,13 @@ def _setup_routes(app: FastAPI):
     async def generate_status(task_id: str):
         task = _generation_tasks.get(task_id)
         if task is None:
-            return JSONResponse({"status": "not_found", "count": 0, "error": "", "traceback": ""})
+            return JSONResponse({"status": "not_found", "count": 0, "error": "", "traceback": "",
+                                 "critic_summary": None})
         questions = task.get("questions")
         count = len(questions) if questions else 0
         return JSONResponse({"status": task["status"], "count": count,
-                             "error": task.get("error", ""), "traceback": task.get("traceback", "")})
+                             "error": task.get("error", ""), "traceback": task.get("traceback", ""),
+                             "critic_summary": task.get("critic_summary")})
 
     # ==================================================================
     # PRESENT MODE

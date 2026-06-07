@@ -2,6 +2,11 @@
 
 Works with sections (not whole notes) — each section is a self-contained
 knowledge unit for question generation.
+
+Includes a critic agent that reviews generated questions for quality:
+- Accuracy against source material
+- Question clarity & distractor quality
+- Explanation completeness
 """
 
 from __future__ import annotations
@@ -9,8 +14,15 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from typing import Literal
 
 from .models import Note, Option, Question, QuestionType, new_id, now
+
+# ---------------------------------------------------------------------------
+# Critic verdict type
+# ---------------------------------------------------------------------------
+
+CriticVerdict = Literal["accept", "revise", "reject"]
 
 # ---------------------------------------------------------------------------
 # JSON Schema for structured output
@@ -62,6 +74,90 @@ SYSTEM_PROMPT = """你是一位资深教学设计师，专精于设计高质量�
 4. **解释即教学** — 每道题的解释要让人看完就懂，不只是说"XX是对的"
 5. **基于真实内容** — 题目只能来自给定的笔记内容，不能编造知识点
 6. **难度递进** — easy=直接回忆, medium=理解应用, hard=分析综合"""
+
+# ---------------------------------------------------------------------------
+# JSON Schema for critic structured output
+# ---------------------------------------------------------------------------
+
+CRITIC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "reviews": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question_index": {"type": "integer"},
+                    "verdict": {"type": "string", "enum": ["accept", "revise", "reject"]},
+                    "issues": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "suggestions": {"type": "string"},
+                    "revised_question": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string"},
+                            "topic": {"type": "string"},
+                            "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                            "question": {"type": "string"},
+                            "options": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string"},
+                                        "text": {"type": "string"},
+                                    },
+                                    "required": ["id", "text"],
+                                },
+                            },
+                            "code_context": {"type": "string"},
+                            "correct_answer": {"type": "string"},
+                            "explanation": {"type": "string"},
+                        },
+                        "required": ["type", "topic", "difficulty", "question", "correct_answer", "explanation"],
+                    },
+                },
+                "required": ["question_index", "verdict", "issues", "suggestions"],
+            },
+        },
+        "summary": {
+            "type": "object",
+            "properties": {
+                "total": {"type": "integer"},
+                "accepted": {"type": "integer"},
+                "revised": {"type": "integer"},
+                "rejected": {"type": "integer"},
+                "overall_assessment": {"type": "string"},
+            },
+            "required": ["total", "accepted", "revised", "rejected", "overall_assessment"],
+        },
+    },
+    "required": ["reviews", "summary"],
+}
+
+CRITIC_SYSTEM_PROMPT = """你是一位严格出题审核专家。你的职责是审核 AI 生成的练习题，确保每道题都达到出版级质量。
+
+审核标准：
+
+1. **内容准确性** — 题目和答案是否与源笔记完全一致？不能有事实性错误
+2. **题目清晰度** — 题目表述是否清晰无歧义？学生能否准确理解问什么？
+3. **干扰项质量**（选择题）— 错误选项是否反映真实常见误解？不能明显荒谬
+4. **解释质量** — 解释是否说明了"为什么对"和"为什么错"？不能只是复述答案
+5. **难度匹配** — 声明的难度是否与题目实际难度一致？
+6. **原子性** — 每道题是否只测一个知识点？不能把多个概念混在一起
+
+判定规则：
+- **accept** — 题目质量合格，无需修改
+- **revise** — 有小问题但可修复，直接在 revised_question 中给出修正版
+- **reject** — 有根本性问题（内容错误、曲解原文、题目无意义），无法简单修复
+
+修订要求：
+- 修订时必须保留原题的知识点和结构，只修复问题部分
+- 如果答案是错的，给出正确答案并更新解释
+- 如果选项有误，修正选项（保留合理选项）
+- 修订后的题目必须完整（所有必填字段）"""
 
 
 def _build_prompt(
@@ -424,3 +520,298 @@ class QuestionGenerator:
             all_questions.extend(questions)
             remaining -= batch_count
         return all_questions
+
+    # ------------------------------------------------------------------
+    # Generate with critic review
+    # ------------------------------------------------------------------
+
+    def generate_with_critic(
+        self,
+        notes: list[Note],
+        count: int = 10,
+        question_types: list[QuestionType] | None = None,
+        difficulty: str = "mixed",
+        topic: str | None = None,
+    ) -> tuple[list[Question], dict]:
+        """Generate questions and run critic review.
+
+        Returns (questions, review_summary) where questions are the
+        accepted + revised questions (rejected ones are dropped).
+        """
+        questions = self.generate(notes, count, question_types, difficulty, topic)
+        if not questions:
+            return [], {"total": 0, "accepted": 0, "revised": 0, "rejected": 0,
+                        "overall_assessment": "No questions generated."}
+
+        # Build sections text for critic context
+        sections: list[dict] = []
+        for note in notes:
+            for s in note.sections:
+                sections.append({
+                    "id": s.id,
+                    "note_path": note.path,
+                    "heading": s.heading,
+                    "level": s.level,
+                    "content": s.content,
+                    "code_blocks": s.code_blocks,
+                })
+        sections_text = sections_to_text(sections) if sections else ""
+
+        critic = QuestionCritic(model=self.model)
+        return critic.review(questions, sections_text)
+
+    def generate_from_sections_with_critic(
+        self,
+        sections: list[dict],
+        count: int = 10,
+        question_types: list[QuestionType] | None = None,
+        difficulty: str = "mixed",
+        topic: str | None = None,
+    ) -> tuple[list[Question], dict]:
+        """Generate questions from sections and run critic review.
+
+        Returns (questions, review_summary).
+        """
+        questions = self.generate_from_sections(sections, count, question_types, difficulty, topic)
+        if not questions:
+            return [], {"total": 0, "accepted": 0, "revised": 0, "rejected": 0,
+                        "overall_assessment": "No questions generated."}
+
+        sections_text = sections_to_text(sections)
+        critic = QuestionCritic(model=self.model)
+        return critic.review(questions, sections_text)
+
+
+# ---------------------------------------------------------------------------
+# Question Critic — reviews generated questions for quality
+# ---------------------------------------------------------------------------
+
+class QuestionCritic:
+    """Review generated questions using Claude Code CLI.
+
+    Checks each question against source material for:
+    - Factual accuracy
+    - Question clarity
+    - Distractor quality (for MC questions)
+    - Explanation completeness
+    - Difficulty calibration
+    - Atomicity (one concept per question)
+    """
+
+    def __init__(self, model: str = "sonnet"):
+        self.model = model
+
+    def review(
+        self,
+        questions: list[Question],
+        sections_text: str = "",
+    ) -> tuple[list[Question], dict]:
+        """Review a list of questions and return (approved_questions, summary).
+
+        Questions with verdict "reject" are dropped.
+        Questions with verdict "revise" are replaced with the revised version.
+        Questions with verdict "accept" are kept as-is.
+
+        Args:
+            questions: The generated questions to review.
+            sections_text: The source note text for accuracy verification.
+
+        Returns:
+            (filtered_questions, summary_dict)
+        """
+        if not questions:
+            return [], {"total": 0, "accepted": 0, "revised": 0, "rejected": 0,
+                        "overall_assessment": "No questions to review."}
+
+        # Build the questions listing for the critic
+        questions_text = self._format_questions_for_critic(questions)
+        sections_context = sections_text[:6000] if sections_text else "（无源内容提供）"
+
+        prompt = f"""请审核以下 {len(questions)} 道 AI 生成的练习题。
+
+## 源笔记内容（用于验证准确性）
+{sections_context}
+
+## 待审核题目
+{questions_text}
+
+请逐一审核每道题，给出 accept / revise / reject 判定。
+- accept: 质量合格
+- revise: 有小问题，在 revised_question 中给出修正版
+- reject: 有根本性问题，无法简单修复
+
+注意：revise 时 revised_question 必须包含完整的题目（所有字段），不能只给修改的部分。"""
+
+        full_prompt = CRITIC_SYSTEM_PROMPT + "\n\n---\n\n" + prompt
+
+        cmd = [
+            "claude", "-p", full_prompt,
+            "--model", self.model,
+            "--output-format", "json",
+            "--json-schema", json.dumps(CRITIC_SCHEMA),
+            "--max-budget-usd", "0.5",
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            raw_text = result.stdout if result.returncode == 0 else (result.stdout + result.stderr)
+            data = _extract_critic_json(raw_text)
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+            # If critic fails, accept all questions as-is (fail open)
+            summary = {
+                "total": len(questions),
+                "accepted": len(questions),
+                "revised": 0,
+                "rejected": 0,
+                "overall_assessment": f"Critic unavailable ({e}), all questions accepted as-is.",
+            }
+            return questions, summary
+
+        if not data or "reviews" not in data:
+            # No valid review output — accept all
+            summary = {
+                "total": len(questions),
+                "accepted": len(questions),
+                "revised": 0,
+                "rejected": 0,
+                "overall_assessment": "Critic returned no reviews, all questions accepted as-is.",
+            }
+            return questions, summary
+
+        return self._apply_reviews(questions, data["reviews"], data.get("summary", {}))
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _format_questions_for_critic(self, questions: list[Question]) -> str:
+        """Format questions as readable text for the critic."""
+        parts = []
+        for i, q in enumerate(questions):
+            lines = [f"### 题目 {i + 1} (question_index={i})"]
+            lines.append(f"类型: {q.type}")
+            lines.append(f"主题: {q.topic}")
+            lines.append(f"难度: {q.difficulty}")
+            lines.append(f"题目: {q.question}")
+            if q.code_context:
+                lines.append(f"代码上下文: {q.code_context}")
+            if q.options:
+                for opt in q.options:
+                    lines.append(f"  选项 {opt.id}: {opt.text}")
+            lines.append(f"正确答案: {q.correct_answer}")
+            lines.append(f"解释: {q.explanation}")
+            parts.append("\n".join(lines))
+        return "\n\n".join(parts)
+
+    def _apply_reviews(
+        self,
+        questions: list[Question],
+        reviews: list[dict],
+        summary: dict,
+    ) -> tuple[list[Question], dict]:
+        """Apply critic reviews to questions, returning accepted + revised ones."""
+        # Build index lookup
+        review_map: dict[int, dict] = {}
+        for r in reviews:
+            idx = r.get("question_index", -1)
+            review_map[idx] = r
+
+        approved: list[Question] = []
+
+        for i, q in enumerate(questions):
+            review = review_map.get(i)
+            if review is None:
+                # No review for this question — accept as-is
+                approved.append(q)
+                continue
+
+            verdict = review.get("verdict", "accept")
+
+            if verdict == "reject":
+                # Drop the question
+                continue
+            elif verdict == "revise":
+                revised = review.get("revised_question")
+                if revised:
+                    # Replace with revised version, preserving IDs
+                    revised_q = self._build_revised_question(q, revised)
+                    if revised_q:
+                        approved.append(revised_q)
+                        continue
+                # If revision is malformed, fall through to accept original
+                approved.append(q)
+            else:
+                # accept
+                approved.append(q)
+
+        return approved, summary
+
+    def _build_revised_question(
+        self,
+        original: Question,
+        revised: dict,
+    ) -> Question | None:
+        """Build a Question from critic's revised_question, preserving source IDs."""
+        try:
+            options = None
+            if revised.get("options"):
+                options = [Option(id=o["id"], text=o["text"]) for o in revised["options"]]
+
+            qtype = revised.get("type", original.type)
+            difficulty_val = revised.get("difficulty", original.difficulty)
+            if difficulty_val not in ("easy", "medium", "hard"):
+                difficulty_val = "medium"
+
+            return Question(
+                id=new_id(),  # New ID for revised question
+                type=qtype,
+                topic=revised.get("topic", original.topic),
+                difficulty=difficulty_val,
+                question=revised.get("question", original.question),
+                options=options or original.options,
+                code_context=revised.get("code_context", original.code_context),
+                correct_answer=str(revised.get("correct_answer", original.correct_answer)),
+                explanation=revised.get("explanation", original.explanation),
+                source_note=original.source_note,
+                source_section=original.source_section,
+                created_at=now(),
+            )
+        except Exception:
+            return None
+
+
+def _extract_critic_json(text: str) -> dict | None:
+    """Extract critic review data from Claude's response."""
+    # Try structured_output wrapper
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            if "structured_output" in data:
+                return data["structured_output"]
+            if "reviews" in data:
+                return data
+    except json.JSONDecodeError:
+        pass
+
+    # Try to extract from code fence
+    fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Try to find JSON object with reviews key
+    obj_match = re.search(r'\{.*"reviews".*\}', text, re.DOTALL)
+    if obj_match:
+        try:
+            return json.loads(obj_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    return None

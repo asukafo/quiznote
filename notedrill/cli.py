@@ -16,7 +16,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from .config import load_config, save_config, Config
 from .storage import Storage
 from .parser import parse_vault
-from .generator import QuestionGenerator
+from .generator import QuestionGenerator, QuestionCritic, sections_to_text
 from .quiz import create_quiz, QuizSession
 from .grader import grade_answer, compute_score, AIGrader
 from .models import QuestionType
@@ -56,6 +56,29 @@ def get_generator() -> QuestionGenerator:
 def get_ai_grader() -> AIGrader:
     cfg = get_config()
     return AIGrader(model=cfg.anthropic_model)
+
+
+def _print_critic_summary(summary: dict) -> None:
+    """Print critic review summary with colored output."""
+    if not summary:
+        return
+    total = summary.get("total", 0)
+    accepted = summary.get("accepted", 0)
+    revised = summary.get("revised", 0)
+    rejected = summary.get("rejected", 0)
+    assessment = summary.get("overall_assessment", "")
+
+    console.print()
+    panel_title = "Critic Review Summary"
+    lines = [
+        f"Total reviewed: {total}",
+        f"[green]Accepted: {accepted}[/green]",
+        f"[yellow]Revised: {revised}[/yellow]",
+        f"[red]Rejected: {rejected}[/red]",
+    ]
+    if assessment:
+        lines.append(f"\n[dim]{assessment}[/dim]")
+    console.print(Panel("\n".join(lines), title=panel_title))
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +173,9 @@ def generate(
         "mixed", "--difficulty", "-d", help="Difficulty: easy, medium, hard, mixed"
     ),
     topic: Optional[str] = typer.Option(None, "--topic", help="Topic filter"),
+    no_critic: bool = typer.Option(False, "--no-critic", help="Skip the critic review step"),
 ):
-    """Generate quiz questions from your notes using AI."""
+    """Generate quiz questions from your notes using AI, with critic review."""
     cfg = get_config()
     storage = get_storage()
 
@@ -208,6 +232,32 @@ def generate(
             notes, count=count, question_types=question_types, difficulty=difficulty, topic=topic
         )
         progress.update(task, completed=True)
+
+    # ── Critic review step ──
+    critic_summary = None
+    if not no_critic and questions:
+        console.print()
+        with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+        ) as progress:
+            task = progress.add_task(f"Critic reviewing {len(questions)} questions...", total=None)
+            critic = QuestionCritic(model=cfg.anthropic_model)
+
+            # Build sections text for critic
+            sections: list[dict] = []
+            for note in notes:
+                for s in note.sections:
+                    sections.append({
+                        "id": s.id, "note_path": note.path,
+                        "heading": s.heading, "level": s.level,
+                        "content": s.content, "code_blocks": s.code_blocks,
+                    })
+            sections_text = sections_to_text(sections)
+            questions, critic_summary = critic.review(questions, sections_text)
+            progress.update(task, completed=True)
+
+        # Show critic results
+        _print_critic_summary(critic_summary)
 
     storage.save_questions(questions)
 
@@ -651,11 +701,13 @@ def pregenerate(
     topic: Optional[str] = typer.Option(None, "--topic", help="Topic filter"),
     path: Optional[str] = typer.Option(None, "--path", "-p", help="Only generate from this file or directory"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be generated without actually doing it"),
+    no_critic: bool = typer.Option(False, "--no-critic", help="Skip the critic review step"),
 ):
     """Pre-generate questions from all notes and save to vault DB.
 
     This scans the entire vault (or a subset via --path) and generates
     questions for every markdown file, saving them into the .notedrill.db.
+    After generation, a critic agent reviews all questions for quality.
     """
     cfg = get_config()
     storage = get_storage()
@@ -675,6 +727,8 @@ def pregenerate(
 
     console.print(f"Found [bold]{len(notes)}[/bold] notes to generate questions for.")
     console.print(f"Settings: {count} questions/batch, {qtype}, {difficulty}")
+    if not no_critic:
+        console.print("[dim]Critic review: enabled[/dim]")
 
     # Map types
     type_map = {"mc": "multiple_choice", "tf": "true_false", "code": "programming",
@@ -697,9 +751,25 @@ def pregenerate(
     except typer.Exit:
         raise
 
+    # Build sections list once for critic reuse
+    all_sections: list[dict] = []
+    for note in notes:
+        for s in note.sections:
+            all_sections.append({
+                "id": s.id, "note_path": note.path,
+                "heading": s.heading, "level": s.level,
+                "content": s.content, "code_blocks": s.code_blocks,
+            })
+    all_sections_text = sections_to_text(all_sections)
+
     # Process in batches of 5 notes
     total_questions = 0
+    total_accepted = 0
+    total_revised = 0
+    total_rejected = 0
     batch_size = 5
+    critic = QuestionCritic(model=cfg.anthropic_model) if not no_critic else None
+
     for i in range(0, len(notes), batch_size):
         batch = notes[i:i + batch_size]
         batch_count = max(1, count * len(batch) // len(notes)) if len(notes) > 5 else count
@@ -717,6 +787,20 @@ def pregenerate(
             except Exception as e:
                 console.print(f"[red]Error on batch {i}: {e}[/red]")
                 continue
+            progress.update(task, completed=True)
+
+        # ── Critic review for this batch ──
+        if critic and questions:
+            with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+                task = progress.add_task(f"Critic reviewing {len(questions)} questions...", total=None)
+                try:
+                    questions, c_summary = critic.review(questions, all_sections_text)
+                    total_accepted += c_summary.get("accepted", 0)
+                    total_revised += c_summary.get("revised", 0)
+                    total_rejected += c_summary.get("rejected", 0)
+                except Exception as e:
+                    console.print(f"[yellow]Critic skipped (error): {e}[/yellow]")
+                progress.update(task, completed=True)
 
         storage.save_questions(questions)
         total_questions += len(questions)
@@ -724,6 +808,8 @@ def pregenerate(
             console.print(f"  [green]✓[/green] {note.title}: {len(questions)} questions")
 
     console.print(f"\n[green]✓[/green] Total: [bold]{total_questions}[/bold] questions saved to vault DB.")
+    if not no_critic:
+        console.print(f"  Critic: {total_accepted} accepted, {total_revised} revised, {total_rejected} rejected")
 
 
 # ---------------------------------------------------------------------------
